@@ -1,0 +1,123 @@
+.upload-page {
+  max-width: 560px;
+}
+
+.upload-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.upload-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.upload-form .form-group label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.upload-form .input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.input-file {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.upload-error {
+  padding: 0.75rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: #fca5a5;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.upload-result {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.upload-result h3 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.upload-result-link {
+  margin-top: 0.75rem;
+}
+
+.upload-result-link a {
+  font-weight: 600;
+}
+
+.upload-help {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.upload-help h3 {
+  font-size: 0.95rem;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.upload-help ul {
+  margin-left: 1.25rem;
+}
+
+.upload-help-note {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.upload-sample-link {
+  margin-top: 1rem;
+}
+
+.upload-sample-btn {
+  display: inline-block;
+  padding: 0.6rem 1.25rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.upload-sample-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  text-decoration: none;
+  color: #fff;
+}
+
+.upload-help-footer {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}

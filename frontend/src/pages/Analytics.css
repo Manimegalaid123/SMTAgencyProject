@@ -1,0 +1,77 @@
+.analytics-page {
+  max-width: 1100px;
+}
+
+.analytics-revenue-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.revenue-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  transition: border-color 0.2s, transform 0.15s;
+}
+
+.revenue-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.revenue-card-title {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.5rem;
+}
+
+.revenue-card-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.revenue-card-green .revenue-card-value { color: var(--accent); }
+.revenue-card-emerald .revenue-card-value { color: #10b981; }
+.revenue-card-amber .revenue-card-value { color: var(--warning); }
+
+.chart-section {
+  margin-bottom: 2.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+}
+
+.chart-section h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.chart-container {
+  min-height: 280px;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.chart-container.half {
+  min-height: 260px;
+}
+
+@media (max-width: 768px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+}
