@@ -17,6 +17,8 @@ import {
   Area,
   ComposedChart,
 } from 'recharts';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import api from '../api';
 import './Analytics.css';
 import {
@@ -30,9 +32,10 @@ import {
   IconTrophy,
   IconPieChart,
   IconBarChart,
+  IconDownload,
 } from '../components/Icons';
 
-const COLORS = ['#006633', '#00a86b', '#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+const COLORS = ['#006633', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#22c55e', '#ec4899'];
 
 const tooltipStyle = {
   background: 'var(--surface)',
@@ -80,6 +83,152 @@ export default function Analytics() {
   if (loading) return <div className="page-loading">Loading...</div>;
 
   const monthlyBarData = monthly.map((m) => ({ name: m.month, quantity: m.totalQuantity, revenue: m.totalRevenue || 0 }));
+
+  // PDF-friendly format (uses Rs. instead of ₹)
+  const formatINRforPDF = (n) => `Rs. ${Number(n || 0).toLocaleString('en-IN')}`;
+
+  // PDF Export Function
+  const downloadPDF = () => {
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const today = new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+    
+    // Header
+    doc.setFillColor(0, 102, 51); // Green
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SMT Agency', 14, 18);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Analytics Report', 14, 28);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${today}`, pageWidth - 14, 28, { align: 'right' });
+    
+    // Reset text color
+    doc.setTextColor(0, 0, 0);
+    let yPos = 50;
+
+    // Summary Section
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Summary Overview', 14, yPos);
+    yPos += 10;
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Total Revenue', formatINRforPDF(summary?.totalRevenue)],
+        ['This Month Revenue', formatINRforPDF(summary?.thisMonthRevenue)],
+        ['Last Month Revenue', formatINRforPDF(summary?.lastMonthRevenue)],
+        ['Daily Average', formatINRforPDF(summary?.dailyAvgRevenue)],
+        ['Total Products', summary?.totalProducts || 0],
+        ['Revenue Growth', `${summary?.revenueGrowth > 0 ? '+' : ''}${summary?.revenueGrowth || 0}%`],
+        ['Sales Growth', `${summary?.salesGrowth > 0 ? '+' : ''}${summary?.salesGrowth || 0}%`],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [0, 102, 51], textColor: 255 },
+      margin: { left: 14, right: 14 },
+    });
+    
+    yPos = doc.lastAutoTable.finalY + 15;
+
+    // Top Products Section
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Top Selling Products', 14, yPos);
+    yPos += 10;
+
+    if (topProducts.length > 0) {
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Rank', 'Product', 'Qty Sold', 'Revenue']],
+        body: topProducts.map((p, idx) => [
+          idx + 1,
+          p.productName || 'Unknown',
+          p.totalQuantity.toLocaleString(),
+          formatINRforPDF(p.totalRevenue)
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [0, 102, 51], textColor: 255 },
+        margin: { left: 14, right: 14 },
+      });
+      yPos = doc.lastAutoTable.finalY + 15;
+    }
+
+    // Monthly Sales Section
+    if (yPos > 200) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Monthly Sales Data', 14, yPos);
+    yPos += 10;
+
+    if (monthly.length > 0) {
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Month', 'Quantity', 'Revenue']],
+        body: monthly.map(m => [
+          m.month,
+          m.totalQuantity.toLocaleString(),
+          formatINRforPDF(m.totalRevenue)
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [0, 102, 51], textColor: 255 },
+        margin: { left: 14, right: 14 },
+      });
+      yPos = doc.lastAutoTable.finalY + 15;
+    }
+
+    // Product-wise Sales Section
+    if (yPos > 200) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Product-wise Sales', 14, yPos);
+    yPos += 10;
+
+    if (productWise.length > 0) {
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Product', 'Quantity', 'Revenue']],
+        body: productWise.map(p => [
+          p.productName || 'Unknown',
+          p.totalQuantity.toLocaleString(),
+          formatINRforPDF(p.totalRevenue)
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [0, 102, 51], textColor: 255 },
+        margin: { left: 14, right: 14 },
+      });
+    }
+
+    // Footer on last page
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(9);
+      doc.setTextColor(128, 128, 128);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth - 14, doc.internal.pageSize.getHeight() - 10, { align: 'right' });
+      doc.text('SMT Agency - FMCG Distribution', 14, doc.internal.pageSize.getHeight() - 10);
+    }
+
+    // Save the PDF
+    doc.save(`SMT_Analytics_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      alert('Failed to generate PDF: ' + error.message);
+    }
+  };
   const pieData = productWise.map((p, i) => ({ name: p.productName || 'Unknown', value: p.totalQuantity, fill: COLORS[i % COLORS.length] }));
   
   // Enhanced stats cards
@@ -136,8 +285,13 @@ export default function Analytics() {
           <h1 className="page-title"><IconBarChart className="title-icon" /> Analytics Dashboard</h1>
           <p className="page-desc">Track your sales performance, revenue trends, and top-selling products</p>
         </div>
-        <div className="header-date">
-          {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        <div className="header-actions">
+          <button className="download-pdf-btn" onClick={downloadPDF}>
+            <IconDownload /> Export PDF
+          </button>
+          <span className="header-date">
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </span>
         </div>
       </header>
 
@@ -277,8 +431,8 @@ export default function Analytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                 <XAxis type="number" stroke={axisStroke} fontSize={12} tickFormatter={(v) => formatCompact(v)} />
                 <YAxis type="category" dataKey="name" stroke={axisStroke} fontSize={12} width={70} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [name === 'revenue' ? formatINR(v) : v, name === 'revenue' ? 'Revenue' : 'Quantity']} />
-                <Bar dataKey="revenue" fill="#00a86b" radius={[0, 4, 4, 0]} name="Revenue (₹)" />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [formatINR(v), 'Revenue']} />
+                <Bar dataKey="revenue" fill="#00a86b" radius={[0, 4, 4, 0]} name="Revenue" />
               </BarChart>
             </ResponsiveContainer>
           </div>

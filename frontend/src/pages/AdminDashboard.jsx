@@ -2,17 +2,24 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
-import { IconBox, IconChart, IconTrending, IconInbox, IconSend, IconBarChart, IconUpload, IconTarget, IconLightbulb } from '../components/Icons';
+import { IconBox, IconChart, IconTrending, IconInbox, IconSend, IconBarChart, IconUpload, IconTarget, IconLightbulb, IconAlertTriangle } from '../components/Icons';
 import './Dashboard.css';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
+  const [lowStock, setLowStock] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    api.get('/analytics/summary').then(({ data }) => setSummary(data)).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([
+      api.get('/analytics/summary').catch(() => ({ data: null })),
+      api.get('/stock/low-stock').catch(() => ({ data: null }))
+    ]).then(([summaryRes, lowStockRes]) => {
+      setSummary(summaryRes.data);
+      setLowStock(lowStockRes.data);
+    }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -62,7 +69,7 @@ export default function AdminDashboard() {
     { to: '/imports', label: 'Add Import', icon: IconInbox, desc: 'Record new stock import' },
     { to: '/exports', label: 'Record Export', icon: IconSend, desc: 'Log sales export' },
     { to: '/requests', label: 'View Requests', icon: IconTarget, desc: 'Manage agency requests' },
-    { to: '/predict', label: 'Sales Prediction', icon: IconTrending, primary: true, desc: 'ML-powered forecasting' },
+    { to: '/stock', label: 'View Stock', icon: IconBox, desc: 'Check inventory levels' },
   ];
 
   return (
@@ -80,6 +87,15 @@ export default function AdminDashboard() {
           </Link>
         </div>
       </header>
+
+      {/* Low Stock Warning Banner */}
+      {lowStock?.critical > 0 && (
+        <div className="stock-alert-banner critical">
+          <IconAlertTriangle />
+          <span><strong>{lowStock.critical} product{lowStock.critical > 1 ? 's' : ''}</strong> out of stock! Restock immediately.</span>
+          <Link to="/imports" className="banner-action">Add Import</Link>
+        </div>
+      )}
 
       <section className="dashboard-stats">
         <div className="stats-header">

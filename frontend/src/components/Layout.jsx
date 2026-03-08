@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -90,12 +90,34 @@ const IconShield = () => (
   </svg>
 );
 
+const IconShoppingCart = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+  </svg>
+);
+
+const IconBell = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+  </svg>
+);
+
+const IconAlertTriangle = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+);
+
 const adminNav = [
   { to: '/dashboard', label: 'Dashboard', icon: <IconHome /> },
   { to: '/products', label: 'Products', icon: <IconPackage /> },
   { to: '/imports', label: 'Imports', icon: <IconDownload /> },
   { to: '/exports', label: 'Exports', icon: <IconUpload /> },
   { to: '/stock', label: 'Stock', icon: <IconTag /> },
+  { to: '/orders', label: 'Orders', icon: <IconShoppingCart /> },
   { to: '/requests', label: 'Requests', icon: <IconClipboard /> },
   { to: '/analytics', label: 'Analytics', icon: <IconChart /> },
   { to: '/upload', label: 'Upload Data', icon: <IconUpload /> },
@@ -105,6 +127,7 @@ const adminNav = [
 const agencyNav = [
   { to: '/agency', label: 'Dashboard', icon: <IconHome /> },
   { to: '/agency-products', label: 'Products', icon: <IconPackage /> },
+  { to: '/my-orders', label: 'My Orders', icon: <IconShoppingCart /> },
   { to: '/requests', label: 'My Requests', icon: <IconClipboard /> },
 ];
 
@@ -117,7 +140,46 @@ export default function Layout() {
   const [changePasswordForm, setChangePasswordForm] = useState({ current: '', new: '', confirm: '' });
   const [changePasswordError, setChangePasswordError] = useState('');
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  
+  // Notification states
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState({
+    pendingOrders: 0,
+    pendingRequests: 0,
+    lowStockItems: []
+  });
+  
   const nav = user?.role === 'admin' ? adminNav : agencyNav;
+
+  // Fetch notifications for admin
+  const fetchNotifications = useCallback(async () => {
+    if (user?.role !== 'admin') return;
+    
+    try {
+      const [ordersRes, requestsRes, stockRes] = await Promise.all([
+        api.get('/orders').catch(() => ({ data: [] })),
+        api.get('/requests').catch(() => ({ data: [] })),
+        api.get('/stock').catch(() => ({ data: [] }))
+      ]);
+      
+      const pendingOrders = ordersRes.data.filter(o => o.status === 'pending').length;
+      const pendingRequests = requestsRes.data.filter(r => r.status === 'pending').length;
+      const lowStockItems = stockRes.data.filter(s => s.quantity < 10);
+      
+      setNotifications({ pendingOrders, pendingRequests, lowStockItems });
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    fetchNotifications();
+    // Refresh notifications every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const totalNotifications = notifications.pendingOrders + notifications.pendingRequests + notifications.lowStockItems.length;
 
   const handleLogout = () => {
     logout();
@@ -184,12 +246,23 @@ export default function Layout() {
           </div>
         </div>
         <nav className="sidebar-nav">
-          {nav.map(({ to, label, icon }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <span className="nav-icon">{icon}</span>
-              <span className="nav-label">{label}</span>
-            </NavLink>
-          ))}
+          {nav.map(({ to, label, icon }) => {
+            // Add badge counts for specific nav items (admin only)
+            let badgeCount = 0;
+            if (user?.role === 'admin') {
+              if (to === '/orders') badgeCount = notifications.pendingOrders;
+              if (to === '/requests') badgeCount = notifications.pendingRequests;
+              if (to === '/stock') badgeCount = notifications.lowStockItems.length;
+            }
+            
+            return (
+              <NavLink key={to} to={to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <span className="nav-icon">{icon}</span>
+                <span className="nav-label">{label}</span>
+                {badgeCount > 0 && <span className="nav-badge">{badgeCount}</span>}
+              </NavLink>
+            );
+          })}
         </nav>
         <div className="sidebar-footer">
           <div className="user-info">
@@ -261,6 +334,93 @@ export default function Layout() {
         </div>
       )}
       <main className="main">
+        {/* Top Bar with Notification Bell (Admin only) */}
+        {user?.role === 'admin' && (
+          <div className="top-bar">
+            <div className="top-bar-left">
+              <h2 className="page-context">{user?.agencyName || 'SMT Agency Admin'}</h2>
+            </div>
+            <div className="top-bar-right">
+              <div className="notification-wrapper">
+                <button 
+                  className="notification-bell" 
+                  onClick={() => setNotificationOpen(!notificationOpen)}
+                  aria-label="Notifications"
+                >
+                  <IconBell />
+                  {totalNotifications > 0 && (
+                    <span className="notification-count">{totalNotifications > 9 ? '9+' : totalNotifications}</span>
+                  )}
+                </button>
+                
+                {notificationOpen && (
+                  <div className="notification-dropdown">
+                    <div className="notification-header">
+                      <h3>Notifications</h3>
+                      <button className="close-btn" onClick={() => setNotificationOpen(false)}>×</button>
+                    </div>
+                    
+                    <div className="notification-list">
+                      {totalNotifications === 0 ? (
+                        <div className="notification-empty">No new notifications</div>
+                      ) : (
+                        <>
+                          {notifications.pendingOrders > 0 && (
+                            <div 
+                              className="notification-item order" 
+                              onClick={() => { navigate('/orders'); setNotificationOpen(false); }}
+                            >
+                              <div className="notification-icon">
+                                <IconShoppingCart />
+                              </div>
+                              <div className="notification-content">
+                                <strong>{notifications.pendingOrders} Pending Order{notifications.pendingOrders > 1 ? 's' : ''}</strong>
+                                <span>Click to review and approve</span>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {notifications.pendingRequests > 0 && (
+                            <div 
+                              className="notification-item request"
+                              onClick={() => { navigate('/requests'); setNotificationOpen(false); }}
+                            >
+                              <div className="notification-icon">
+                                <IconClipboard />
+                              </div>
+                              <div className="notification-content">
+                                <strong>{notifications.pendingRequests} Pending Request{notifications.pendingRequests > 1 ? 's' : ''}</strong>
+                                <span>New product requests awaiting</span>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {notifications.lowStockItems.length > 0 && (
+                            <div 
+                              className="notification-item low-stock"
+                              onClick={() => { navigate('/stock'); setNotificationOpen(false); }}
+                            >
+                              <div className="notification-icon warning">
+                                <IconAlertTriangle />
+                              </div>
+                              <div className="notification-content">
+                                <strong>{notifications.lowStockItems.length} Low Stock Alert{notifications.lowStockItems.length > 1 ? 's' : ''}</strong>
+                                <span>
+                                  {notifications.lowStockItems.slice(0, 2).map(s => s.product?.name || 'Item').join(', ')}
+                                  {notifications.lowStockItems.length > 2 && ` +${notifications.lowStockItems.length - 2} more`}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

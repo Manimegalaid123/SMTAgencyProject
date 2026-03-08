@@ -13,6 +13,8 @@ import Imports from './pages/Imports';
 import Exports from './pages/Exports';
 import Stock from './pages/Stock';
 import Requests from './pages/Requests';
+import Orders from './pages/Orders';
+import MyOrders from './pages/MyOrders';
 import Analytics from './pages/Analytics';
 import Upload from './pages/Upload';
 import MLPredict from './pages/MLPredict';
@@ -68,6 +70,8 @@ export default function App() {
         <Route path="exports" element={<PrivateRoute adminOnly><Exports /></PrivateRoute>} />
         <Route path="stock" element={<PrivateRoute adminOnly><Stock /></PrivateRoute>} />
         <Route path="requests" element={<PrivateRoute><Requests /></PrivateRoute>} />
+        <Route path="orders" element={<PrivateRoute adminOnly><Orders /></PrivateRoute>} />
+        <Route path="my-orders" element={<PrivateRoute agencyOnly><MyOrders /></PrivateRoute>} />
         <Route path="analytics" element={<PrivateRoute adminOnly><Analytics /></PrivateRoute>} />
         <Route path="upload" element={<PrivateRoute adminOnly><Upload /></PrivateRoute>} />
         <Route path="predict" element={<PrivateRoute adminOnly><MLPredict /></PrivateRoute>} />
