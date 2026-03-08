@@ -397,7 +397,7 @@ export default function Landing() {
             <p className="contact-name">Mr. Sriraman</p>
             <p className="contact-role">Proprietor</p>
             <div className="contact-details">
-              <p><IconMapPin /> 3/64 Main Road, Thuthikulam<br />Namakkal - 637001</p>
+              <p><IconMapPin /> 3/64, Main Road, Thuthikulam<br />Namakkal - 637404, Tamil Nadu</p>
               <p><IconPhone /> +91 98940 86188</p>
               <p><IconMail /> sriramansmt188@gmail.com</p>
             </div>
@@ -446,7 +446,7 @@ export default function Landing() {
               <div className="contact-card">
                 <div className="contact-card-icon"><IconMapPin /></div>
                 <h4>Address</h4>
-                <p>SMT Agencies<br />3/64 Main Road, Thuthikulam<br />Namakkal - 637001<br />Tamil Nadu, India</p>
+                <p>SMT Agencies<br />3/64, Main Road, Thuthikulam<br />Namakkal - 637404<br />Tamil Nadu, India</p>
               </div>
               <div className="contact-card">
                 <div className="contact-card-icon"><IconPhone /></div>
@@ -462,13 +462,13 @@ export default function Landing() {
           </div>
           <div className="contact-map">
             <iframe 
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3916.1234567890!2d78.1234567!3d11.1234567!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2sNamakkal!5e0!3m2!1sen!2sin!4v1234567890"
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3916.5!2d78.1677!3d11.2183!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3babf1a3a5555555%3A0x5555555555555555!2sThuthikulam%2C%20Tamil%20Nadu%20637404!5e0!3m2!1sen!2sin!4v1709900000000"
               width="100%" 
               height="300" 
               style={{ border: 0, borderRadius: '12px' }} 
               allowFullScreen="" 
               loading="lazy"
-              title="SMT Agencies Location"
+              title="SMT Agencies Location - Thuthikulam, Namakkal"
             ></iframe>
           </div>
         </div>
@@ -500,7 +500,7 @@ export default function Landing() {
             </div>
             <div className="footer-col">
               <h4>Contact</h4>
-              <p>Namakkal - 637001</p>
+              <p>Namakkal - 637404</p>
               <p>+91 98940 86188</p>
               <p>sriramansmt188@gmail.com</p>
             </div>
