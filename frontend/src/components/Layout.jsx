@@ -118,7 +118,7 @@ const adminNav = [
   { to: '/exports', label: 'Exports', icon: <IconUpload /> },
   { to: '/stock', label: 'Stock', icon: <IconTag /> },
   { to: '/orders', label: 'Orders', icon: <IconShoppingCart /> },
-  { to: '/requests', label: 'Requests', icon: <IconClipboard /> },
+  { to: '/requests', label: 'Enquiries', icon: <IconClipboard /> },
   { to: '/analytics', label: 'Analytics', icon: <IconChart /> },
   { to: '/upload', label: 'Upload Data', icon: <IconUpload /> },
   { to: '/predict', label: 'ML Prediction', icon: <IconCpu /> },
@@ -128,7 +128,7 @@ const agencyNav = [
   { to: '/agency', label: 'Dashboard', icon: <IconHome /> },
   { to: '/agency-products', label: 'Products', icon: <IconPackage /> },
   { to: '/my-orders', label: 'My Orders', icon: <IconShoppingCart /> },
-  { to: '/requests', label: 'My Requests', icon: <IconClipboard /> },
+  { to: '/requests', label: 'My Enquiries', icon: <IconClipboard /> },
 ];
 
 export default function Layout() {
@@ -145,7 +145,7 @@ export default function Layout() {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState({
     pendingOrders: 0,
-    pendingRequests: 0,
+    pendingEnquiries: 0,
     lowStockItems: []
   });
   
@@ -163,10 +163,10 @@ export default function Layout() {
       ]);
       
       const pendingOrders = ordersRes.data.filter(o => o.status === 'pending').length;
-      const pendingRequests = requestsRes.data.filter(r => r.status === 'pending').length;
+      const pendingEnquiries = requestsRes.data.filter(r => r.status === 'pending').length;
       const lowStockItems = stockRes.data.filter(s => s.quantity < 10);
       
-      setNotifications({ pendingOrders, pendingRequests, lowStockItems });
+      setNotifications({ pendingOrders, pendingEnquiries, lowStockItems });
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
     }
@@ -179,7 +179,7 @@ export default function Layout() {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
-  const totalNotifications = notifications.pendingOrders + notifications.pendingRequests + notifications.lowStockItems.length;
+  const totalNotifications = notifications.pendingOrders + notifications.pendingEnquiries + notifications.lowStockItems.length;
 
   const handleLogout = () => {
     logout();
@@ -251,7 +251,7 @@ export default function Layout() {
             let badgeCount = 0;
             if (user?.role === 'admin') {
               if (to === '/orders') badgeCount = notifications.pendingOrders;
-              if (to === '/requests') badgeCount = notifications.pendingRequests;
+              if (to === '/requests') badgeCount = notifications.pendingEnquiries;
               if (to === '/stock') badgeCount = notifications.lowStockItems.length;
             }
             
@@ -380,7 +380,7 @@ export default function Layout() {
                             </div>
                           )}
                           
-                          {notifications.pendingRequests > 0 && (
+                          {notifications.pendingEnquiries > 0 && (
                             <div 
                               className="notification-item request"
                               onClick={() => { navigate('/requests'); setNotificationOpen(false); }}
@@ -389,8 +389,8 @@ export default function Layout() {
                                 <IconClipboard />
                               </div>
                               <div className="notification-content">
-                                <strong>{notifications.pendingRequests} Pending Request{notifications.pendingRequests > 1 ? 's' : ''}</strong>
-                                <span>New product requests awaiting</span>
+                                <strong>{notifications.pendingEnquiries} Pending Enquir{notifications.pendingEnquiries > 1 ? 'ies' : 'y'}</strong>
+                                <span>New product enquiries awaiting</span>
                               </div>
                             </div>
                           )}

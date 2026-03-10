@@ -68,7 +68,7 @@ export default function AdminDashboard() {
   const actions = [
     { to: '/imports', label: 'Add Import', icon: IconInbox, desc: 'Record new stock import' },
     { to: '/exports', label: 'Record Export', icon: IconSend, desc: 'Log sales export' },
-    { to: '/requests', label: 'View Requests', icon: IconTarget, desc: 'Manage agency requests' },
+    { to: '/requests', label: 'View Enquiries', icon: IconTarget, desc: 'Manage agency enquiries' },
     { to: '/stock', label: 'View Stock', icon: IconBox, desc: 'Check inventory levels' },
   ];
 
@@ -83,7 +83,7 @@ export default function AdminDashboard() {
         <div className="header-actions">
           <Link to="/predict" className="header-cta">
             <IconTrending />
-            <span>ML Prediction</span>
+            <span> Prediction</span>
           </Link>
         </div>
       </header>
@@ -202,7 +202,7 @@ export default function AdminDashboard() {
       <section className="dashboard-tip">
         <div className="tip-icon"><IconLightbulb /></div>
         <div className="tip-content">
-          <strong>Pro Tip:</strong> Use the ML Prediction tool to forecast next month's sales based on historical data. Upload at least 3 months of sales records for accurate predictions.
+          <strong>Pro Tip:</strong> Use the Prediction tool to forecast next month's sales based on historical data. Upload at least 3 months of sales records for accurate predictions.
         </div>
       </section>
     </div>

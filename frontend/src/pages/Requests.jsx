@@ -3,145 +3,218 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import './Requests.css';
 
+// Icons
+const IconMessage = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+);
+
+const IconReply = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+  </svg>
+);
+
+const IconCheck = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+);
+
 export default function Requests() {
   const { user } = useAuth();
-  const [requests, setRequests] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ product: '', quantity: '' });
-  const [actionModal, setActionModal] = useState(null);
+  const [form, setForm] = useState({ subject: '', message: '' });
+  const [replyModal, setReplyModal] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [viewModal, setViewModal] = useState(null);
 
   const fetchData = () => {
-    if (user?.role === 'agency') {
-      Promise.all([api.get('/requests'), api.get('/products')])
-        .then(([r, p]) => { setRequests(r.data); setProducts(Array.isArray(p.data) ? p.data : (p.data.products || [])); })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    } else {
-      api.get('/requests').then(({ data }) => setRequests(data)).catch(() => {}).finally(() => setLoading(false));
-    }
+    api.get('/requests')
+      .then(({ data }) => setEnquiries(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     fetchData();
-  }, [user?.role]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/requests', { product: form.product, quantity: Number(form.quantity) });
+      await api.post('/requests', { subject: form.subject, message: form.message });
       setModal(false);
-      setForm({ product: '', quantity: '' });
+      setForm({ subject: '', message: '' });
       fetchData();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed');
+      alert(err.response?.data?.error || 'Failed to submit enquiry');
     }
   };
 
-  const handleStatus = async (id, status, adminNotes) => {
+  const handleReply = async () => {
+    if (!replyText.trim()) return alert('Please enter a reply');
     try {
-      await api.patch(`/requests/${id}`, { status, adminNotes });
-      setActionModal(null);
+      await api.patch(`/requests/${replyModal._id}`, { adminReply: replyText });
+      setReplyModal(null);
+      setReplyText('');
       fetchData();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed');
+      alert(err.response?.data?.error || 'Failed to send reply');
     }
   };
+
+  const handleClose = async (id) => {
+    try {
+      await api.patch(`/requests/${id}/close`);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to close enquiry');
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const colors = {
+      pending: 'warning',
+      replied: 'success',
+      closed: 'muted',
+      approved: 'success',
+      rejected: 'danger'
+    };
+    return <span className={`badge badge-${colors[status] || 'default'}`}>{status}</span>;
+  };
+
+  // Filter out old format enquiries (ones without subject/message) - they're from old system
+  const validEnquiries = enquiries.filter(e => e.subject && e.message);
 
   if (loading) return <div className="page-loading">Loading...</div>;
 
   return (
     <div className="requests-page">
       <div className="page-header">
-        <h1 className="page-title">{user?.role === 'admin' ? 'Product Requests' : 'My Requests'}</h1>
+        <div>
+          <h1 className="page-title">{user?.role === 'admin' ? 'Product Enquiries' : 'My Enquiries'}</h1>
+          <p className="page-desc">
+            {user?.role === 'admin' 
+              ? 'View and respond to agency enquiries' 
+              : 'Ask questions about products, availability, pricing, etc.'}
+          </p>
+        </div>
         {user?.role === 'agency' && (
-          <button type="button" className="btn-primary" onClick={() => setModal(true)}>New Request</button>
+          <button type="button" className="btn-primary" onClick={() => setModal(true)}>
+            <IconMessage /> New Enquiry
+          </button>
         )}
       </div>
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Quantity</th>
-              {user?.role === 'admin' && <th>Agency</th>}
-              <th>Status</th>
-              <th>Date</th>
-              {user?.role === 'admin' && <th>Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((req) => (
-              <tr key={req._id}>
-                <td>{req.product?.name}</td>
-                <td>{req.quantity}</td>
-                {user?.role === 'admin' && <td>{req.agencyName || '—'}</td>}
-                <td><span className={`badge badge-${req.status}`}>{req.status}</span></td>
-                <td>{new Date(req.createdAt).toLocaleDateString()}</td>
-                {user?.role === 'admin' && req.status === 'pending' && (
-                  <td>
-                    <button type="button" className="btn-sm approve" onClick={() => setActionModal({ id: req._id, action: 'approve', req })}>Approve</button>
-                    <button type="button" className="btn-sm reject" onClick={() => setActionModal({ id: req._id, action: 'reject', req })}>Reject</button>
-                  </td>
-                )}
-                {user?.role === 'admin' && req.status !== 'pending' && <td>—</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {requests.length === 0 && <p className="empty-state">No requests yet.</p>}
 
+      {/* Enquiries List */}
+      <div className="enquiries-list">
+        {validEnquiries.map((enq) => (
+          <div key={enq._id} className={`enquiry-card ${enq.status}`}>
+            <div className="enquiry-header">
+              <div className="enquiry-meta">
+                {user?.role === 'admin' && <span className="agency-name">{enq.agencyName}</span>}
+                <span className="enquiry-date">{new Date(enq.createdAt).toLocaleDateString()}</span>
+                {getStatusBadge(enq.status)}
+              </div>
+              <h3 className="enquiry-subject">{enq.subject}</h3>
+            </div>
+            <p className="enquiry-message">{enq.message}</p>
+            
+            {enq.adminReply && (
+              <div className="enquiry-reply">
+                <div className="reply-header">
+                  <IconReply /> <strong>Admin Reply</strong>
+                  <span className="reply-date">{new Date(enq.repliedAt).toLocaleDateString()}</span>
+                </div>
+                <p>{enq.adminReply}</p>
+              </div>
+            )}
+            
+            <div className="enquiry-actions">
+              {user?.role === 'admin' && enq.status !== 'closed' && (
+                <button className="btn-sm primary" onClick={() => { setReplyModal(enq); setReplyText(enq.adminReply || ''); }}>
+                  <IconReply /> {enq.adminReply ? 'Edit Reply' : 'Reply'}
+                </button>
+              )}
+              {enq.status !== 'closed' && (
+                <button className="btn-sm" onClick={() => handleClose(enq._id)}>
+                  <IconCheck /> Mark Closed
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {validEnquiries.length === 0 && (
+        <div className="empty-state">
+          <IconMessage />
+          <p>No enquiries yet.</p>
+          {user?.role === 'agency' && (
+            <button className="btn-primary" onClick={() => setModal(true)}>Ask Your First Question</button>
+          )}
+        </div>
+      )}
+
+      {/* New Enquiry Modal */}
       {modal && user?.role === 'agency' && (
         <div className="modal-overlay" onClick={() => setModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Request Products</h2>
+          <div className="modal enquiry-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>New Enquiry</h2>
+            <p className="modal-desc">Ask about products, availability, pricing, or any other questions.</p>
             <form onSubmit={handleSubmit} className="form">
-              <label>Product</label>
-              <select
-                value={form.product}
-                onChange={(e) => setForm({ ...form, product: e.target.value })}
-                required
-                className="input"
-              >
-                <option value="">Select product</option>
-                {products.map((p) => (
-                  <option key={p._id} value={p._id}>{p.name} (Available: {p.stock ?? 0})</option>
-                ))}
-              </select>
-              <label>Quantity</label>
+              <label className="form-label">Subject *</label>
               <input
-                type="number"
-                min="1"
-                value={form.quantity}
-                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                type="text"
+                placeholder="e.g., Horlicks 1kg availability"
+                value={form.subject}
+                onChange={(e) => setForm({ ...form, subject: e.target.value })}
                 required
                 className="input"
               />
+              <label className="form-label">Your Question *</label>
+              <textarea
+                placeholder="Write your question in detail..."
+                value={form.message}
+                onChange={(e) => setForm({ ...form, message: e.target.value })}
+                required
+                className="input"
+                rows={5}
+              />
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={() => setModal(false)}>Cancel</button>
-                <button type="submit" className="btn-primary">Submit Request</button>
+                <button type="submit" className="btn-primary">Submit Enquiry</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {actionModal && (
-        <div className="modal-overlay" onClick={() => setActionModal(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{actionModal.action === 'approve' ? 'Approve' : 'Reject'} Request</h2>
-            <p>{actionModal.req.product?.name} — Qty: {actionModal.req.quantity}</p>
-            <div className="form-actions" style={{ marginTop: '1rem' }}>
-              <button type="button" className="btn-secondary" onClick={() => setActionModal(null)}>Cancel</button>
-              <button
-                type="button"
-                className={actionModal.action === 'approve' ? 'btn-primary' : 'btn-danger'}
-                onClick={() => handleStatus(actionModal.id, actionModal.action === 'approve' ? 'approved' : 'rejected')}
-              >
-                {actionModal.action === 'approve' ? 'Approve' : 'Reject'}
-              </button>
+      {/* Reply Modal (Admin) */}
+      {replyModal && (
+        <div className="modal-overlay" onClick={() => setReplyModal(null)}>
+          <div className="modal reply-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Reply to Enquiry</h2>
+            <div className="original-enquiry">
+              <p className="enquiry-from"><strong>From:</strong> {replyModal.agencyName}</p>
+              <p className="enquiry-subject-preview"><strong>Subject:</strong> {replyModal.subject}</p>
+              <p className="enquiry-message-preview">{replyModal.message}</p>
+            </div>
+            <label className="form-label">Your Reply</label>
+            <textarea
+              placeholder="Type your response..."
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              className="input"
+              rows={4}
+            />
+            <div className="form-actions">
+              <button type="button" className="btn-secondary" onClick={() => setReplyModal(null)}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={handleReply}>Send Reply</button>
             </div>
           </div>
         </div>

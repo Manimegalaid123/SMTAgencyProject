@@ -9,6 +9,13 @@ const orderItemSchema = new mongoose.Schema({
 });
 
 const orderSchema = new mongoose.Schema({
+    statusHistory: [
+      {
+        status: { type: String, required: true },
+        label: { type: String, required: true },
+        date: { type: Date, required: true }
+      }
+    ],
   orderNumber: { type: String, required: true, unique: true },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   agencyName: { type: String, required: true },
@@ -32,6 +39,23 @@ const orderSchema = new mongoose.Schema({
   notes: { type: String },
   invoiceNumber: { type: String },
   rejectionReason: { type: String },
+  
+  // Payment fields
+  paymentMethod: { 
+    type: String, 
+    enum: ['cod', 'stripe', 'bank_transfer'], 
+    default: 'cod' 
+  },
+  paymentStatus: { 
+    type: String, 
+    enum: ['unpaid', 'paid', 'partial', 'refunded', 'failed'], 
+    default: 'unpaid' 
+  },
+  stripePaymentIntentId: { type: String },
+  stripeSessionId: { type: String },
+  amountPaid: { type: Number, default: 0 },
+  paidAt: { type: Date },
+  
   approvedAt: { type: Date },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   deliveredAt: { type: Date },

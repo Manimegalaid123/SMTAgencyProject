@@ -58,35 +58,11 @@ export default function UserDashboard() {
           </Link>
           <Link to="/requests" className="action-btn primary">
             <span className="action-btn-icon"><IconShoppingCart /></span>
-            My Requests
+            My Enquiries
           </Link>
         </div>
       </section>
-      {requests.length > 0 && (
-        <section className="dashboard-section">
-          <h2 className="dashboard-section-title">Recent Requests</h2>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Quantity</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((req) => (
-                  <tr key={req._id}>
-                    <td>{req.product?.name}</td>
-                    <td>{req.quantity}</td>
-                    <td><span className={`badge badge-${req.status}`}>{req.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      {/* Recent Requests section removed as per user request */}
     </div>
   );
 }

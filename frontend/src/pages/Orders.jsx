@@ -288,6 +288,9 @@ export default function Orders() {
                   <strong>{order.orderNumber}</strong>
                   {getStatusBadge(order.status)}
                   {getDeliveryTypeBadge(order.deliveryType)}
+                  <span className={`payment-badge ${order.paymentStatus || 'unpaid'}`}>
+                    {order.paymentMethod === 'stripe' ? '💳' : '💵'} {order.paymentStatus === 'paid' ? 'Paid' : 'Unpaid'}
+                  </span>
                 </div>
                 <div className="order-date">{formatDate(order.createdAt)}</div>
               </div>
@@ -310,7 +313,13 @@ export default function Orders() {
                 <div className="order-pricing">
                   <div className="pricing-row">
                     <span>Subtotal:</span>
-                    <span>₹{(order.subtotal || order.totalAmount).toLocaleString('en-IN')}</span>
+                    <span>
+                      ₹{order.subtotal != null
+                        ? order.subtotal.toLocaleString('en-IN')
+                        : order.totalAmount != null
+                          ? order.totalAmount.toLocaleString('en-IN')
+                          : '—'}
+                    </span>
                   </div>
                   {order.totalWeight > 0 && (
                     <div className="pricing-row small">
@@ -320,11 +329,19 @@ export default function Orders() {
                   )}
                   <div className={`pricing-row ${order.deliveryCharge === 0 ? 'free' : ''}`}>
                     <span>Delivery:</span>
-                    <span>{order.deliveryCharge === 0 ? <span className="free-tag">FREE</span> : `₹${order.deliveryCharge?.toLocaleString('en-IN')}`}</span>
+                    <span>
+                      {order.deliveryCharge === 0
+                        ? <span className="free-tag">FREE</span>
+                        : order.deliveryCharge != null
+                          ? `₹${order.deliveryCharge.toLocaleString('en-IN')}`
+                          : '—'}
+                    </span>
                   </div>
                   <div className="pricing-row total">
                     <span>Total:</span>
-                    <strong>₹{order.totalAmount.toLocaleString('en-IN')}</strong>
+                    <strong>
+                      {order.totalAmount != null ? `₹${order.totalAmount.toLocaleString('en-IN')}` : '—'}
+                    </strong>
                   </div>
                 </div>
               </div>
@@ -435,6 +452,26 @@ export default function Orders() {
                 <div className="detail-row">
                   <span>Invoice Number:</span>
                   <strong>{selectedOrder.invoiceNumber}</strong>
+                </div>
+              )}
+              <div className="detail-row">
+                <span>Payment Method:</span>
+                <span className={`payment-method-tag ${selectedOrder.paymentMethod || 'cod'}`}>
+                  {selectedOrder.paymentMethod === 'stripe' ? '💳 Online Payment' : '💵 Cash on Delivery'}
+                </span>
+              </div>
+              <div className="detail-row">
+                <span>Payment Status:</span>
+                <span className={`payment-status-tag ${selectedOrder.paymentStatus || 'unpaid'}`}>
+                  {selectedOrder.paymentStatus === 'paid' ? '✓ Paid' : 
+                   selectedOrder.paymentStatus === 'refunded' ? '↩ Refunded' : 
+                   selectedOrder.paymentStatus === 'failed' ? '✗ Failed' : '○ Unpaid'}
+                </span>
+              </div>
+              {selectedOrder.paidAt && (
+                <div className="detail-row">
+                  <span>Paid At:</span>
+                  <span>{formatDate(selectedOrder.paidAt)}</span>
                 </div>
               )}
               {selectedOrder.notes && (

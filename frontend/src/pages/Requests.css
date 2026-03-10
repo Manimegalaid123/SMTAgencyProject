@@ -1,20 +1,244 @@
-.requests-page .btn-sm.approve {
-  margin-right: 0.5rem;
+/* Enquiry Page Styles */
+.requests-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.requests-page .page-desc {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.requests-page .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Enquiries List */
+.enquiries-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.enquiry-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  transition: box-shadow 0.2s;
+}
+
+.enquiry-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.enquiry-card.pending {
+  border-left: 4px solid var(--warning, #f59e0b);
+}
+
+.enquiry-card.replied {
+  border-left: 4px solid var(--accent);
+}
+
+.enquiry-card.closed {
+  border-left: 4px solid var(--text-muted);
+  opacity: 0.8;
+}
+
+.enquiry-header {
+  margin-bottom: 0.75rem;
+}
+
+.enquiry-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.agency-name {
+  font-weight: 600;
   color: var(--accent);
+}
+
+.enquiry-date {
+  color: var(--text-muted);
+}
+
+.enquiry-subject {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
+.enquiry-message {
+  color: var(--text);
+  line-height: 1.6;
+  margin: 0.5rem 0 1rem 0;
+  white-space: pre-wrap;
+}
+
+/* Reply Section */
+.enquiry-reply {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.reply-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.reply-header svg {
+  width: 14px;
+  height: 14px;
+}
+
+.reply-date {
+  color: var(--text-muted);
+  font-weight: normal;
+  margin-left: auto;
+}
+
+.enquiry-reply p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* Enquiry Actions */
+.enquiry-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.enquiry-actions .btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.enquiry-actions .btn-sm:hover {
+  background: var(--bg);
+}
+
+.enquiry-actions .btn-sm.primary {
+  background: var(--accent);
   border-color: var(--accent);
+  color: white;
 }
 
-.requests-page .btn-sm.approve:hover {
-  background: rgba(34, 197, 94, 0.2);
+.enquiry-actions .btn-sm.primary:hover {
+  background: var(--accent-hover);
 }
 
-.requests-page .btn-sm.reject {
-  color: var(--danger);
-  border-color: var(--danger);
+/* Badge Styles */
+.badge-warning {
+  background: #f59e0b;
+  color: white;
 }
 
-.requests-page .btn-sm.reject:hover {
-  background: rgba(239, 68, 68, 0.2);
+.badge-success {
+  background: #22c55e;
+  color: white;
+}
+
+.badge-muted {
+  background: var(--text-muted);
+  color: white;
+}
+
+/* Empty State */
+.requests-page .empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-muted);
+}
+
+.requests-page .empty-state svg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.requests-page .empty-state p {
+  margin-bottom: 1rem;
+}
+
+/* Modal Styles */
+.enquiry-modal,
+.reply-modal {
+  max-width: 500px;
+}
+
+.modal-desc {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.original-enquiry {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.original-enquiry p {
+  margin: 0.25rem 0;
+}
+
+.enquiry-from {
+  color: var(--text-muted);
+}
+
+.enquiry-subject-preview {
+  color: var(--text);
+}
+
+.enquiry-message-preview {
+  margin-top: 0.5rem !important;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* Form Label */
+.requests-page .form-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
 }
 
 .btn-danger {

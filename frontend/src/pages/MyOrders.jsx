@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
+import { useCart } from '../context/CartContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import './MyOrders.css';
+import OrderTimeline from '../components/OrderTimeline';
 
 const IconPackage = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -46,6 +49,37 @@ export default function MyOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { clearCart } = useCart();
+  const [paymentMessage, setPaymentMessage] = useState(null);
+
+  // Handle payment callback
+  useEffect(() => {
+    const payment = searchParams.get('payment');
+    const orderId = searchParams.get('orderId');
+    
+    if (payment === 'success' && orderId) {
+      // Clear cart after successful payment
+      clearCart();
+      
+      // Verify payment
+      api.get(`/payments/verify/${orderId}`)
+        .then(({ data }) => {
+          if (data.success) {
+            setPaymentMessage({ type: 'success', text: 'Payment successful! Your order has been confirmed.' });
+          }
+        })
+        .catch(() => {
+          setPaymentMessage({ type: 'info', text: 'Order placed! Payment is being processed.' });
+        });
+      
+      // Clear URL params
+      setSearchParams({});
+    } else if (payment === 'cancel') {
+      setPaymentMessage({ type: 'warning', text: 'Payment cancelled. Your order is saved as Cash on Delivery.' });
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams, clearCart]);
 
   useEffect(() => {
     api.get('/orders')
@@ -174,6 +208,14 @@ export default function MyOrders() {
         <p className="page-desc">Track your order history and download invoices</p>
       </div>
 
+      {/* Payment Status Message */}
+      {paymentMessage && (
+        <div className={`payment-message ${paymentMessage.type}`}>
+          {paymentMessage.text}
+          <button className="close-message" onClick={() => setPaymentMessage(null)}>×</button>
+        </div>
+      )}
+
       {orders.length === 0 ? (
         <div className="empty-state">
           <IconPackage />
@@ -223,23 +265,44 @@ export default function MyOrders() {
                   <div className="order-charges">
                     <div className="charge-line">
                       <span>Subtotal:</span>
-                      <span>₹{(order.subtotal || order.totalAmount).toLocaleString('en-IN')}</span>
+                      <span>
+                        ₹{order.subtotal != null
+                          ? order.subtotal.toLocaleString('en-IN')
+                          : order.totalAmount != null
+                            ? order.totalAmount.toLocaleString('en-IN')
+                            : '—'}
+                      </span>
                     </div>
-                    {order.totalWeight > 0 && (
-                      <div className="charge-line weight">
-                        <span>Weight:</span>
-                        <span>{order.totalWeight?.toFixed(2)} kg</span>
-                      </div>
-                    )}
+                    {/* Weight line removed as per user request */}
                     <div className={`charge-line delivery ${order.deliveryCharge === 0 ? 'free' : ''}`}>
                       <span>Delivery:</span>
-                      <span>{order.deliveryCharge === 0 ? <span className="free-tag">FREE</span> : `₹${order.deliveryCharge?.toLocaleString('en-IN')}`}</span>
+                      <span>
+                        {order.deliveryCharge === 0
+                          ? <span className="free-tag">FREE</span>
+                          : order.deliveryCharge != null
+                            ? `₹${order.deliveryCharge.toLocaleString('en-IN')}`
+                            : '—'}
+                      </span>
                     </div>
                   </div>
                   
                   <div className="order-total-row">
                     <span>Total</span>
-                    <span className="order-total">₹{order.totalAmount.toLocaleString('en-IN')}</span>
+                    <span className="order-total">
+                      {order.totalAmount != null ? `₹${order.totalAmount.toLocaleString('en-IN')}` : '—'}
+                    </span>
+                  </div>
+                  
+                  {/* Payment Status */}
+                  <div className="payment-status-row">
+                    <span className={`payment-method-badge ${order.paymentMethod || 'cod'}`}>
+                      {order.paymentMethod === 'stripe' ? '💳 Online Payment' : '💵 Cash on Delivery'}
+                    </span>
+                    <span className={`payment-status-badge ${order.paymentStatus || 'unpaid'}`}>
+                      {order.paymentStatus === 'paid' ? '✓ Paid' : 
+                       order.paymentStatus === 'refunded' ? '↩ Refunded' : 
+                       order.paymentStatus === 'failed' ? '✗ Failed' : 'Unpaid'}
+                    </span>
                   </div>
                   
                   {order.status === 'rejected' && order.rejectionReason && (
@@ -258,6 +321,11 @@ export default function MyOrders() {
                       </button>
                     )}
                   </div>
+                  {/* Order Tracking Timeline */}
+                  {order.statusHistory && order.statusHistory.length > 0 && (
+                    <OrderTimeline statusHistory={order.statusHistory} deliveryType={order.deliveryType} />
+                  )
+                  }
                 </div>
               </div>
             );

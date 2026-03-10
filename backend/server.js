@@ -12,9 +12,14 @@ const orderRoutes = require('./routes/orders');
 const analyticsRoutes = require('./routes/analytics');
 const uploadRoutes = require('./routes/upload');
 const mlRoutes = require('./routes/ml');
+const paymentRoutes = require('./routes/payments');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
+
+// Stripe webhook needs raw body, so we handle it before express.json()
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -35,6 +40,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/ml', mlRoutes);
+app.use('/api/payments', paymentRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

@@ -836,6 +836,103 @@
   margin-top: 0.15rem;
 }
 
+/* Payment Method Styles */
+.payment-method-section {
+  margin: 1.5rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.payment-method-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.payment-method-section h3 svg {
+  width: 20px;
+  height: 20px;
+}
+
+.payment-options {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.payment-option {
+  flex: 1;
+  min-width: 180px;
+  cursor: pointer;
+}
+
+.payment-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.payment-option .option-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  transition: all 0.2s ease;
+}
+
+.payment-option.selected .option-content {
+  border-color: var(--primary);
+  background: var(--primary-light, rgba(37, 99, 235, 0.05));
+}
+
+.payment-option:hover .option-content {
+  border-color: var(--primary);
+}
+
+.payment-option .option-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border-radius: 10px;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.payment-option .option-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.payment-option.selected .option-icon {
+  background: var(--primary);
+  color: white;
+}
+
+.payment-option .option-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.payment-option .option-info strong {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.payment-option .option-info small {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
 /* Delivery Charges Section */
 .delivery-charges-section {
   margin-top: 1rem;

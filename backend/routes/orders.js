@@ -188,7 +188,14 @@ router.post('/', auth, async (req, res) => {
       totalAmount,
       deliveryAddress: deliveryType === 'home_delivery' ? deliveryAddress : 'Store Pickup - SMT Agency',
       pickupCode,
-      notes
+      notes,
+      statusHistory: [
+        {
+          status: 'pending',
+          label: 'Order Placed',
+          date: new Date()
+        }
+      ]
     });
     
     const populatedOrder = await Order.findById(order._id)
@@ -254,10 +261,13 @@ router.patch('/:id/approve', auth, adminOnly, async (req, res) => {
     }
     
     // Update order status based on delivery type
+    const now = new Date();
     if (order.deliveryType === 'store_pickup') {
       order.status = 'ready_for_pickup';
+      order.statusHistory.push({ status: 'ready_for_pickup', label: 'Ready for Pickup', date: now });
     } else {
       order.status = 'approved';
+      order.statusHistory.push({ status: 'approved', label: 'Order Approved', date: now });
     }
     order.invoiceNumber = invoiceNumber;
     order.approvedAt = new Date();
@@ -288,6 +298,7 @@ router.patch('/:id/reject', auth, adminOnly, async (req, res) => {
     
     order.status = 'rejected';
     order.rejectionReason = reason || 'No reason provided';
+    order.statusHistory.push({ status: 'rejected', label: 'Order Rejected', date: new Date() });
     await order.save();
     
     const populatedOrder = await Order.findById(order._id)
@@ -315,6 +326,7 @@ router.patch('/:id/out-for-delivery', auth, adminOnly, async (req, res) => {
     }
     
     order.status = 'out_for_delivery';
+    order.statusHistory.push({ status: 'out_for_delivery', label: 'Out for Delivery', date: new Date() });
     await order.save();
     
     const populatedOrder = await Order.findById(order._id)

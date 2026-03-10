@@ -400,6 +400,81 @@
   color: #22c55e;
 }
 
+/* Payment Badges */
+.payment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+.payment-badge.paid {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.payment-badge.unpaid {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.payment-badge.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* Payment Info in Detail Modal */
+.payment-method-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.payment-method-tag.stripe {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+.payment-method-tag.cod {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.payment-status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.payment-status-tag.paid {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.payment-status-tag.unpaid {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.payment-status-tag.refunded {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.payment-status-tag.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
 /* Order Pricing Section */
 .order-pricing {
   background: var(--bg);

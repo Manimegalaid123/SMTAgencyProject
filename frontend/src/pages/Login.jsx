@@ -70,7 +70,7 @@ export default function Login() {
           <p className="auth-subtitle">
             {isAdmin
               ? 'Sign in to manage products, stock, and analytics'
-              : 'Sign in to view products and submit requests'}
+              : 'Sign in to view products and submit enquiries'}
           </p>
         </div>
         <form onSubmit={handleSubmit} className="auth-form">

@@ -33,8 +33,9 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .welcome-section {
@@ -68,7 +69,11 @@
 
 .header-actions {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 0.5rem;
+  margin-top: 0;
+  min-width: 140px;
 }
 
 .header-cta {
@@ -711,11 +716,11 @@
   margin-bottom: 1.5rem;
   font-size: 0.9rem;
 }
-
-.stock-alert-banner.critical {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  .dashboard-section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
 }
 
 .stock-alert-banner.warning {
@@ -733,26 +738,41 @@
 }
 
 .banner-action {
-  padding: 0.4rem 0.85rem;
-  background: currentColor;
+  padding: 0.75rem 1.25rem;
+  background: linear-gradient(135deg, var(--accent) 0%, #4ade80 100%);
   color: #fff;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
   text-decoration: none;
-  transition: opacity 0.2s;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+  border: none;
+  transition: all 0.2s;
 }
-
-.stock-alert-banner.critical .banner-action {
-  background: #ef4444;
+  .dashboard-actions-wrap {
+    margin-bottom: 0.5rem;
+  }
 }
 
 .banner-action:hover {
-  opacity: 0.9;
+  opacity: 0.95;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
 }
 
 /* Responsive */
 @media (max-width: 640px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .header-actions {
+    align-items: stretch;
+    margin-top: 1rem;
+    min-width: 0;
+  }
   .alerts-dropdown {
     position: fixed;
     top: auto;
@@ -849,6 +869,16 @@
   }
   
   .dashboard-header {
-    flex-direction: column;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
   }
+
+@media (max-width: 700px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 }

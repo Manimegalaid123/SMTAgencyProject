@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { loadStripe } from '@stripe/stripe-js';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import './Products.css';
+
+// Initialize Stripe with publishable key
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 // Cart Icon
 const IconCart = () => (
@@ -59,6 +63,21 @@ const IconInfo = () => (
   </svg>
 );
 
+const IconCreditCard = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+    <line x1="1" y1="10" x2="23" y2="10"/>
+  </svg>
+);
+
+const IconCash = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="2" y="6" width="20" height="12" rx="2"/>
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M6 12h.01M18 12h.01"/>
+  </svg>
+);
+
 export default function AgencyProducts() {
   const { user } = useAuth();
   const { cartItems, addToCart, updateQuantity, removeFromCart, clearCart, getCartTotal, getCartCount } = useCart();
@@ -68,7 +87,12 @@ export default function AgencyProducts() {
   const [viewMode, setViewMode] = useState('table');
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [checkoutForm, setCheckoutForm] = useState({ address: '', notes: '', deliveryType: 'home_delivery' });
+  const [checkoutForm, setCheckoutForm] = useState({ 
+    address: '', 
+    notes: '', 
+    deliveryType: 'home_delivery',
+    paymentMethod: 'cod'
+  });
   const [submitting, setSubmitting] = useState(false);
   const [deliveryCalc, setDeliveryCalc] = useState(null);
   const [calcLoading, setCalcLoading] = useState(false);
@@ -135,6 +159,7 @@ export default function AgencyProducts() {
           quantity: item.quantity
         })),
         deliveryType: checkoutForm.deliveryType,
+        paymentMethod: checkoutForm.paymentMethod,
         notes: checkoutForm.notes || undefined
       };
       
@@ -145,10 +170,22 @@ export default function AgencyProducts() {
       
       const { data: order } = await api.post('/orders', orderData);
       
+      // If online payment selected, go to our payment page first
+      if (checkoutForm.paymentMethod === 'stripe') {
+        setCheckoutOpen(false);
+        setCartOpen(false);
+        setCheckoutForm({ address: '', notes: '', deliveryType: 'home_delivery', paymentMethod: 'cod' });
+        setDeliveryCalc(null);
+        
+        // Go to payment page with choice
+        navigate(`/payment/${order._id}`);
+        return;
+      }
+      
       clearCart();
       setCheckoutOpen(false);
       setCartOpen(false);
-      setCheckoutForm({ address: '', notes: '', deliveryType: 'home_delivery' });
+      setCheckoutForm({ address: '', notes: '', deliveryType: 'home_delivery', paymentMethod: 'cod' });
       setDeliveryCalc(null);
       
       // Show different message based on delivery type
@@ -479,6 +516,45 @@ export default function AgencyProducts() {
                 className="input"
                 rows={2}
               />
+              
+              {/* Payment Method Selection */}
+              <div className="payment-method-section">
+                <h3><IconCreditCard /> Payment Method</h3>
+                <div className="payment-options">
+                  <label className={`payment-option ${checkoutForm.paymentMethod === 'cod' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="cod"
+                      checked={checkoutForm.paymentMethod === 'cod'}
+                      onChange={(e) => setCheckoutForm({ ...checkoutForm, paymentMethod: e.target.value })}
+                    />
+                    <div className="option-content">
+                      <span className="option-icon"><IconCash /></span>
+                      <div className="option-info">
+                        <strong>Cash on Delivery</strong>
+                        <small>Pay when you receive your order</small>
+                      </div>
+                    </div>
+                  </label>
+                  <label className={`payment-option ${checkoutForm.paymentMethod === 'stripe' ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="stripe"
+                      checked={checkoutForm.paymentMethod === 'stripe'}
+                      onChange={(e) => setCheckoutForm({ ...checkoutForm, paymentMethod: e.target.value })}
+                    />
+                    <div className="option-content">
+                      <span className="option-icon"><IconCreditCard /></span>
+                      <div className="option-info">
+                        <strong>Pay Online</strong>
+                        <small>Secure payment via Stripe (Cards, UPI, etc.)</small>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
               
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={() => setCheckoutOpen(false)}>Cancel</button>
