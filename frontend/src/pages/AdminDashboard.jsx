@@ -9,17 +9,22 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [lowStock, setLowStock] = useState(null);
+  const [expiryReport, setExpiryReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     Promise.all([
       api.get('/analytics/summary').catch(() => ({ data: null })),
-      api.get('/stock/low-stock').catch(() => ({ data: null }))
-    ]).then(([summaryRes, lowStockRes]) => {
-      setSummary(summaryRes.data);
-      setLowStock(lowStockRes.data);
-    }).finally(() => setLoading(false));
+      api.get('/stock/low-stock').catch(() => ({ data: null })),
+      api.get('/stock/reports/expiry').catch(() => ({ data: null })),
+    ])
+      .then(([summaryRes, lowStockRes, expiryRes]) => {
+        setSummary(summaryRes.data);
+        setLowStock(lowStockRes.data);
+        setExpiryReport(expiryRes.data);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -96,6 +101,34 @@ export default function AdminDashboard() {
           <Link to="/imports" className="banner-action">Add Import</Link>
         </div>
       )}
+
+      {/* Inline alert chips for low-stock and expiry */}
+      <div className="dashboard-alert-chips">
+        {lowStock?.products && lowStock.products.length > 0 && (
+          <Link to="/stock" className="alert-chip low">
+            <IconAlertTriangle />
+            <span>
+              {lowStock.products.length} product{lowStock.products.length > 1 ? 's' : ''} below reorder level
+            </span>
+          </Link>
+        )}
+        {expiryReport?.nearExpiry && expiryReport.nearExpiry.length > 0 && (
+          <Link to="/stock" className="alert-chip expiry">
+            <IconAlertTriangle />
+            <span>
+              {expiryReport.nearExpiry.length} batch{expiryReport.nearExpiry.length > 1 ? 'es' : ''} nearing expiry
+            </span>
+          </Link>
+        )}
+        {expiryReport?.expired && expiryReport.expired.length > 0 && (
+          <Link to="/stock" className="alert-chip expired">
+            <IconAlertTriangle />
+            <span>
+              {expiryReport.expired.length} expired batch{expiryReport.expired.length > 1 ? 'es' : ''} (blocked from sale)
+            </span>
+          </Link>
+        )}
+      </div>
 
       <section className="dashboard-stats">
         <div className="stats-header">

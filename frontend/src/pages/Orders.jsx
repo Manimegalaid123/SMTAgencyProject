@@ -52,6 +52,19 @@ export default function Orders() {
   const [collectModal, setCollectModal] = useState(null);
   const [pickupCodeInput, setPickupCodeInput] = useState('');
 
+
+  // Admin: Mark order as ready for pickup
+  const handleReadyForPickup = async (orderId) => {
+    if (!window.confirm('Mark this order as ready for pickup?')) return;
+    try {
+      await api.patch(`/orders/${orderId}/ready-for-pickup`);
+      fetchOrders();
+      alert('Order marked as ready for pickup!');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to update order');
+    }
+  };
+
   const fetchOrders = async () => {
     try {
       const { data } = await api.get('/orders');
@@ -362,8 +375,11 @@ export default function Orders() {
                   </>
                 )}
                 
+
                 {/* Home Delivery Actions */}
-                {order.status === 'approved' && order.deliveryType === 'home_delivery' && (
+                {order.deliveryType === 'home_delivery' &&
+                 (order.status === 'approved' ||
+                  (order.status === 'awaiting_payment' && order.paymentMethod === 'stripe' && order.paymentStatus === 'paid')) && (
                   <>
                     <button className="btn-sm primary" onClick={() => handleOutForDelivery(order._id)}>
                       <IconTruck /> Dispatch
@@ -372,6 +388,15 @@ export default function Orders() {
                       <IconDownload /> Invoice
                     </button>
                   </>
+                )}
+
+                {/* Store Pickup Actions: Ready for Pickup button for approved */}
+
+
+                {order.status === 'approved' && order.deliveryType === 'store_pickup' && (
+                  <button className="btn-sm primary" onClick={() => handleReadyForPickup(order._id)}>
+                    <IconStore /> Ready for Pickup
+                  </button>
                 )}
                 
                 {order.status === 'out_for_delivery' && (
@@ -391,9 +416,11 @@ export default function Orders() {
                     <button className="btn-sm success" onClick={() => setCollectModal(order)}>
                       <IconStore /> Verify & Collect
                     </button>
-                    <button className="btn-sm" onClick={() => generateInvoicePDF(order)}>
-                      <IconDownload /> Invoice
-                    </button>
+                    {order.invoiceNumber && (
+                      <button className="btn-sm" onClick={() => generateInvoicePDF(order)}>
+                        <IconDownload /> Invoice
+                      </button>
+                    )}
                   </>
                 )}
                 

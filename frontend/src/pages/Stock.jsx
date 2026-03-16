@@ -12,10 +12,31 @@ const IconAlertTriangle = () => (
 export default function Stock() {
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expiryReport, setExpiryReport] = useState(null);
+  const [movements, setMovements] = useState([]);
 
   useEffect(() => {
-    api.get('/stock').then(({ data }) => setStocks(data)).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([
+      api.get('/stock'),
+      api.get('/stock/reports/expiry'),
+      api.get('/stock/reports/movements'),
+    ])
+      .then(([stockRes, expiryRes, moveRes]) => {
+        setStocks(stockRes.data || []);
+        setExpiryReport(expiryRes.data || null);
+        setMovements(moveRes.data?.products || moveRes.data || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
+
+  const formatDate = (d, withTime = false) => {
+    if (!d) return '—';
+    const date = new Date(d);
+    return withTime
+      ? date.toLocaleString('en-IN')
+      : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
 
   if (loading) return <div className="page-loading">Loading...</div>;
 
@@ -90,6 +111,103 @@ export default function Stock() {
         </table>
       </div>
       {stocks.length === 0 && <p className="empty-state">No stock records.</p>}
+
+      {/* Expiry & Near-Expiry Report */}
+      {expiryReport && (
+        <div className="expiry-section">
+          <h2 className="section-title">Expiry & Near-Expiry Batches (next {expiryReport.days} days)</h2>
+          {(expiryReport.nearExpiry?.length || 0) === 0 && (expiryReport.expired?.length || 0) === 0 && (
+            <p className="empty-state">No expiry risks detected.</p>
+          )}
+          {expiryReport.nearExpiry?.length > 0 && (
+            <div className="table-wrap sub-table">
+              <h3 className="sub-title">Near-Expiry</h3>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Pack Size</th>
+                    <th>Remaining Qty</th>
+                    <th>Expiry Date</th>
+                    <th>Days Left</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expiryReport.nearExpiry.map(b => (
+                    <tr key={b.batchId}>
+                      <td>{b.name}</td>
+                      <td>{b.packSize || '—'}</td>
+                      <td>{b.remainingQuantity}</td>
+                      <td>{formatDate(b.expiryDate)}</td>
+                      <td>{b.daysLeft}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {expiryReport.expired?.length > 0 && (
+            <div className="table-wrap sub-table">
+              <h3 className="sub-title">Expired (blocked from sale)</h3>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Pack Size</th>
+                    <th>Remaining Qty</th>
+                    <th>Expiry Date</th>
+                    <th>Days Past</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expiryReport.expired.map(b => (
+                    <tr key={b.batchId}>
+                      <td>{b.name}</td>
+                      <td>{b.packSize || '—'}</td>
+                      <td>{b.remainingQuantity}</td>
+                      <td>{formatDate(b.expiryDate)}</td>
+                      <td>{Math.abs(b.daysLeft)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Stock Movement History */}
+      {movements.length > 0 && (
+        <div className="movements-section">
+          <h2 className="section-title">Stock Movement Summary</h2>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Pack Size</th>
+                  <th>Total Imported</th>
+                  <th>Total Exported</th>
+                  <th>Current Stock</th>
+                  <th>Last Movement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map(m => (
+                  <tr key={m.productId}>
+                    <td>{m.name}</td>
+                    <td>{m.packSize || '—'}</td>
+                    <td>{m.totalImported}</td>
+                    <td>{m.totalExported}</td>
+                    <td>{m.currentStock}</td>
+                    <td>{formatDate(m.lastMovement, true)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       <style>{`
         .stock-zero { color: var(--danger); font-weight: 700; }
         .stock-low { color: #f59e0b; font-weight: 600; }
@@ -178,6 +296,22 @@ export default function Stock() {
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(-5px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section-title {
+          margin-top: 2rem;
+          margin-bottom: 0.5rem;
+          font-size: 1.25rem;
+        }
+
+        .sub-title {
+          margin-bottom: 0.5rem;
+          font-size: 1rem;
+        }
+
+        .sub-table {
+          margin-top: 0.75rem;
+          margin-bottom: 1.25rem;
         }
       `}</style>
     </div>

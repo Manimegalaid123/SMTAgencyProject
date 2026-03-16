@@ -49,9 +49,12 @@ export default function MyOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [reviewModal, setReviewModal] = useState(null); // { orderId, productId, productName }
+  const [myReviews, setMyReviews] = useState([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { clearCart } = useCart();
   const [paymentMessage, setPaymentMessage] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   // Handle payment callback
   useEffect(() => {
@@ -59,10 +62,8 @@ export default function MyOrders() {
     const orderId = searchParams.get('orderId');
     
     if (payment === 'success' && orderId) {
-      // Clear cart after successful payment
       clearCart();
-      
-      // Verify payment
+      // Verify payment and refresh orders
       api.get(`/payments/verify/${orderId}`)
         .then(({ data }) => {
           if (data.success) {
@@ -71,9 +72,11 @@ export default function MyOrders() {
         })
         .catch(() => {
           setPaymentMessage({ type: 'info', text: 'Order placed! Payment is being processed.' });
+        })
+        .finally(() => {
+          // Always refresh orders after payment attempt
+          api.get('/orders').then(({ data }) => setOrders(data));
         });
-      
-      // Clear URL params
       setSearchParams({});
     } else if (payment === 'cancel') {
       setPaymentMessage({ type: 'warning', text: 'Payment cancelled. Your order is saved as Cash on Delivery.' });
@@ -82,11 +85,31 @@ export default function MyOrders() {
   }, [searchParams, setSearchParams, clearCart]);
 
   useEffect(() => {
-    api.get('/orders')
-      .then(({ data }) => setOrders(data))
+    Promise.all([
+      api.get('/orders').catch(() => ({ data: [] })),
+      api.get('/reviews/my').catch(() => ({ data: [] })),
+    ])
+      .then(([ordersRes, reviewsRes]) => {
+        const data = ordersRes.data || [];
+        setOrders(data);
+        setMyReviews(reviewsRes.data || []);
+        // Show notification for newly approved or rejected orders
+        const latest = Array.isArray(data) && data.length > 0 ? data[0] : null;
+        if (latest && latest.userNotified === false) {
+          if (latest.status === 'approved') {
+            setNotification({ type: 'success', text: 'Your order has been approved! Please provide delivery details to proceed.' });
+          } else if (latest.status === 'rejected') {
+            setNotification({ type: 'danger', text: 'Your order was rejected.' });
+          }
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const hasReviewed = (orderId, productId) => {
+    return myReviews.some(r => r.order === orderId && r.product === productId);
+  };
 
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { 
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
@@ -145,17 +168,66 @@ export default function MyOrders() {
     doc.text(addressLines, pageWidth - 80, 84);
     
     // Items Table
-    const tableData = order.items.map((item, index) => [
-      index + 1,
-      item.productName,
-      item.quantity,
-      `Rs. ${item.price.toLocaleString('en-IN')}`,
-      `Rs. ${item.subtotal.toLocaleString('en-IN')}`
-    ]);
-    
+    const hasGstPerItem = Array.isArray(order.items) && order.items.some(
+      (item) => typeof item.gstRate === 'number' && !isNaN(item.gstRate)
+    );
+
+    let tableHead;
+    let tableData;
+    let columnStyles;
+
+    if (hasGstPerItem) {
+      tableHead = [['#', 'Product', 'Qty', 'Unit Price', 'Taxable', 'GST %', 'GST Amt', 'Line Total']];
+      tableData = order.items.map((item, index) => {
+        const taxable = item.taxableValue ?? item.subtotal ?? 0;
+        const gstRate = item.gstRate ?? 0;
+        const gstAmount = item.gstAmount ?? 0;
+        const lineTotal = item.lineTotal ?? (taxable + gstAmount);
+        return [
+          index + 1,
+          item.productName,
+          item.quantity,
+          `Rs. ${item.price.toLocaleString('en-IN')}`,
+          `Rs. ${taxable.toLocaleString('en-IN')}`,
+          `${gstRate}%`,
+          `Rs. ${gstAmount.toLocaleString('en-IN')}`,
+          `Rs. ${lineTotal.toLocaleString('en-IN')}`
+        ];
+      });
+
+      columnStyles = {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 15, halign: 'center' },
+        3: { cellWidth: 25, halign: 'right' },
+        4: { cellWidth: 25, halign: 'right' },
+        5: { cellWidth: 18, halign: 'center' },
+        6: { cellWidth: 25, halign: 'right' },
+        7: { cellWidth: 25, halign: 'right' }
+      };
+    } else {
+      // Fallback for older orders without per-item GST
+      tableHead = [['#', 'Product', 'Qty', 'Unit Price', 'Amount']];
+      tableData = order.items.map((item, index) => [
+        index + 1,
+        item.productName,
+        item.quantity,
+        `Rs. ${item.price.toLocaleString('en-IN')}`,
+        `Rs. ${item.subtotal.toLocaleString('en-IN')}`
+      ]);
+
+      columnStyles = {
+        0: { cellWidth: 15 },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 25, halign: 'center' },
+        3: { cellWidth: 35, halign: 'right' },
+        4: { cellWidth: 35, halign: 'right' }
+      };
+    }
+
     autoTable(doc, {
       startY: 105,
-      head: [['#', 'Product', 'Qty', 'Unit Price', 'Amount']],
+      head: tableHead,
       body: tableData,
       theme: 'striped',
       headStyles: {
@@ -164,31 +236,32 @@ export default function MyOrders() {
         fontStyle: 'bold'
       },
       styles: { fontSize: 10, cellPadding: 4 },
-      columnStyles: {
-        0: { cellWidth: 15 },
-        1: { cellWidth: 'auto' },
-        2: { cellWidth: 25, halign: 'center' },
-        3: { cellWidth: 35, halign: 'right' },
-        4: { cellWidth: 35, halign: 'right' }
-      }
+      columnStyles
     });
     
     const finalY = doc.lastAutoTable.finalY + 10;
     
-    const subtotal = order.totalAmount;
-    const gst = subtotal * 0.18;
-    const grandTotal = subtotal + gst;
+    // Use stored tax fields when available, fall back gracefully for older orders
+    const itemsSubtotal = order.subtotal ?? order.totalAmount ?? 0;
+    const totalTax = order.totalTax ?? 0;
+    const deliveryCharge = order.deliveryCharge ?? 0;
+    const grandTotal = (order.totalAmount != null)
+      ? order.totalAmount
+      : itemsSubtotal + totalTax + deliveryCharge;
+
+    doc.text('Items Subtotal:', pageWidth - 80, finalY);
+    doc.text(`Rs. ${itemsSubtotal.toLocaleString('en-IN')}`, pageWidth - 14, finalY, { align: 'right' });
     
-    doc.text('Subtotal:', pageWidth - 80, finalY);
-    doc.text(`Rs. ${subtotal.toLocaleString('en-IN')}`, pageWidth - 14, finalY, { align: 'right' });
-    
-    doc.text('GST (18%):', pageWidth - 80, finalY + 7);
-    doc.text(`Rs. ${gst.toLocaleString('en-IN')}`, pageWidth - 14, finalY + 7, { align: 'right' });
+    doc.text('Total GST:', pageWidth - 80, finalY + 7);
+    doc.text(`Rs. ${totalTax.toLocaleString('en-IN')}`, pageWidth - 14, finalY + 7, { align: 'right' });
+
+    doc.text('Delivery:', pageWidth - 80, finalY + 14);
+    doc.text(`Rs. ${deliveryCharge.toLocaleString('en-IN')}`, pageWidth - 14, finalY + 14, { align: 'right' });
     
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('Grand Total:', pageWidth - 80, finalY + 17);
-    doc.text(`Rs. ${grandTotal.toLocaleString('en-IN')}`, pageWidth - 14, finalY + 17, { align: 'right' });
+    doc.text('Grand Total:', pageWidth - 80, finalY + 24);
+    doc.text(`Rs. ${grandTotal.toLocaleString('en-IN')}`, pageWidth - 14, finalY + 24, { align: 'right' });
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -216,6 +289,9 @@ export default function MyOrders() {
         </div>
       )}
 
+      {notification && (
+        <div className={`notification-banner ${notification.type}`}>{notification.text}</div>
+      )}
       {orders.length === 0 ? (
         <div className="empty-state">
           <IconPackage />
@@ -226,6 +302,11 @@ export default function MyOrders() {
         <div className="orders-timeline">
           {orders.map(order => {
             const status = getStatusInfo(order.status, order.deliveryType);
+            // Show delivery info form for approved orders missing delivery info
+            const needsDelivery = order.status === 'approved' && (
+              !order.deliveryType ||
+              (order.deliveryType === 'home_delivery' && !order.deliveryAddress)
+            );
             return (
               <div key={order._id} className={`order-card status-${order.status}`}>
                 <div className="order-status-indicator">
@@ -257,6 +338,15 @@ export default function MyOrders() {
                         <span>{item.productName}</span>
                         <span>× {item.quantity}</span>
                         <span>₹{item.subtotal.toLocaleString('en-IN')}</span>
+                        {['delivered', 'collected'].includes(order.status) && !hasReviewed(order._id, item.product?._id || item.product) && (
+                          <button
+                            type="button"
+                            className="btn-xs rate-btn"
+                            onClick={() => setReviewModal({ orderId: order._id, productId: item.product?._id || item.product, productName: item.productName })}
+                          >
+                            Rate Product
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -264,7 +354,7 @@ export default function MyOrders() {
                   {/* Delivery Charges Breakdown */}
                   <div className="order-charges">
                     <div className="charge-line">
-                      <span>Subtotal:</span>
+                      <span>Items Subtotal:</span>
                       <span>
                         ₹{order.subtotal != null
                           ? order.subtotal.toLocaleString('en-IN')
@@ -273,6 +363,12 @@ export default function MyOrders() {
                             : '—'}
                       </span>
                     </div>
+                    {order.totalTax != null && order.totalTax > 0 && (
+                      <div className="charge-line">
+                        <span>GST:</span>
+                        <span>₹{order.totalTax.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
                     {/* Weight line removed as per user request */}
                     <div className={`charge-line delivery ${order.deliveryCharge === 0 ? 'free' : ''}`}>
                       <span>Delivery:</span>
@@ -293,17 +389,19 @@ export default function MyOrders() {
                     </span>
                   </div>
                   
-                  {/* Payment Status */}
-                  <div className="payment-status-row">
-                    <span className={`payment-method-badge ${order.paymentMethod || 'cod'}`}>
-                      {order.paymentMethod === 'stripe' ? '💳 Online Payment' : '💵 Cash on Delivery'}
-                    </span>
-                    <span className={`payment-status-badge ${order.paymentStatus || 'unpaid'}`}>
-                      {order.paymentStatus === 'paid' ? '✓ Paid' : 
-                       order.paymentStatus === 'refunded' ? '↩ Refunded' : 
-                       order.paymentStatus === 'failed' ? '✗ Failed' : 'Unpaid'}
-                    </span>
-                  </div>
+                  {/* Payment Status: Only show after order is approved and delivery info is provided (i.e., status is 'awaiting_payment' or later) */}
+                  {['awaiting_payment', 'ready_for_pickup', 'out_for_delivery', 'delivered', 'collected'].includes(order.status) && (
+                    <div className="payment-status-row">
+                      <span className={`payment-method-badge ${order.paymentMethod || 'cod'}`}>
+                        {order.paymentMethod === 'stripe' ? '💳 Online Payment' : '💵 Cash on Delivery'}
+                      </span>
+                      <span className={`payment-status-badge ${order.paymentStatus || 'unpaid'}`}>
+                        {order.paymentStatus === 'paid' ? '✓ Paid' : 
+                         order.paymentStatus === 'refunded' ? '↩ Refunded' : 
+                         order.paymentStatus === 'failed' ? '✗ Failed' : 'Unpaid'}
+                      </span>
+                    </div>
+                  )}
                   
                   {order.status === 'rejected' && order.rejectionReason && (
                     <div className="rejection-reason">
@@ -315,10 +413,35 @@ export default function MyOrders() {
                     <button className="btn-sm" onClick={() => setSelectedOrder(order)}>
                       View Details
                     </button>
-                    {['approved', 'delivered', 'ready_for_pickup', 'collected', 'out_for_delivery'].includes(order.status) && order.invoiceNumber && (
+                    {(
+                      // Invoice for COD after approval/delivery
+                      ['approved', 'delivered', 'ready_for_pickup', 'collected', 'out_for_delivery'].includes(order.status) ||
+                      // Invoice for online payment once paid, even if status is still awaiting_payment
+                      (order.status === 'awaiting_payment' && order.paymentStatus === 'paid')
+                    ) && order.invoiceNumber && (
                       <button className="btn-sm primary" onClick={() => generateInvoicePDF(order)}>
                         <IconDownload /> Download Invoice
                       </button>
+                    )}
+                    {/* Delivery info form removed: users never see this after admin approval. */}
+                    {/* Show Pay Now button ONLY for online payment, awaiting_payment, and not paid */}
+                    {(order.paymentMethod === 'stripe' && order.status === 'awaiting_payment' && order.paymentStatus !== 'paid') && (
+                      (() => {
+                        const amountToPay = order.totalAmount ?? 0;
+                        return (
+                          <div className="payment-action-row">
+                            <div className="payment-amount-info">
+                              <strong>Amount to Pay:</strong> ₹{amountToPay.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                              <span className="payment-breakdown">(Includes item total, GST and delivery)</span>
+                            </div>
+                            <button className="btn-sm primary" onClick={async () => {
+                              window.location.href = `/payment/${order._id}`;
+                            }}>
+                              Pay Now
+                            </button>
+                          </div>
+                        );
+                      })()
                     )}
                   </div>
                   {/* Order Tracking Timeline */}
@@ -400,9 +523,15 @@ export default function MyOrders() {
               
               <div className="detail-charges">
                 <div className="charge-detail-row">
-                  <span>Subtotal</span>
+                  <span>Items Subtotal</span>
                   <span>₹{(selectedOrder.subtotal || selectedOrder.totalAmount).toLocaleString('en-IN')}</span>
                 </div>
+                {selectedOrder.totalTax != null && selectedOrder.totalTax > 0 && (
+                  <div className="charge-detail-row">
+                    <span>GST</span>
+                    <span>₹{selectedOrder.totalTax.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
                 {selectedOrder.totalWeight > 0 && (
                   <div className="charge-detail-row">
                     <span>Total Weight</span>
@@ -423,6 +552,102 @@ export default function MyOrders() {
           </div>
         </div>
       )}
+
+      {/* Review Modal */}
+      {reviewModal && (
+        <div className="modal-overlay" onClick={() => setReviewModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Rate Product</h2>
+              <button className="close-btn" onClick={() => setReviewModal(null)}>×</button>
+            </div>
+            <ReviewForm
+              orderId={reviewModal.orderId}
+              productId={reviewModal.productId}
+              productName={reviewModal.productName}
+              onClose={() => setReviewModal(null)}
+              onSubmitted={(newReview) => {
+                setMyReviews(prev => [...prev, newReview]);
+                setReviewModal(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ReviewForm({ orderId, productId, productName, onClose, onSubmitted }) {
+  const [rating, setRating] = useState(5);
+  const [hover, setHover] = useState(0);
+  const [title, setTitle] = useState('');
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!rating) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const { data } = await api.post('/reviews', {
+        orderId,
+        productId,
+        rating,
+        title,
+        comment,
+      });
+      onSubmitted(data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to submit review');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form className="review-form" onSubmit={handleSubmit}>
+      <div className="review-product-name">{productName}</div>
+      <div className="star-rating">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            className={"star-btn " + ((hover || rating) >= star ? 'filled' : '')}
+            onClick={() => setRating(star)}
+            onMouseEnter={() => setHover(star)}
+            onMouseLeave={() => setHover(0)}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+      <label className="form-label">Title (optional)</label>
+      <input
+        className="input"
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        maxLength={100}
+        placeholder="Short summary"
+      />
+      <label className="form-label">Comments (optional)</label>
+      <textarea
+        className="input"
+        rows={3}
+        value={comment}
+        onChange={e => setComment(e.target.value)}
+        maxLength={500}
+        placeholder="Share your experience (quality, freshness, delivery, etc.)"
+      />
+      {error && <p className="form-error">{error}</p>}
+      <div className="form-actions">
+        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting ? 'Submitting...' : 'Submit Review'}
+        </button>
+      </div>
+    </form>
   );
 }

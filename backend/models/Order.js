@@ -5,7 +5,12 @@ const orderItemSchema = new mongoose.Schema({
   productName: { type: String, required: true },
   quantity: { type: Number, required: true, min: 1 },
   price: { type: Number, required: true },
-  subtotal: { type: Number, required: true }
+  subtotal: { type: Number, required: true },
+  // GST fields captured at order time to keep history even if product tax changes later
+  gstRate: { type: Number, default: 0 },
+  taxableValue: { type: Number },
+  gstAmount: { type: Number },
+  lineTotal: { type: Number }
 });
 
 const orderSchema = new mongoose.Schema({
@@ -21,6 +26,8 @@ const orderSchema = new mongoose.Schema({
   agencyName: { type: String, required: true },
   items: [orderItemSchema],
   subtotal: { type: Number, required: true }, // Items total before delivery
+  // Tax totals (derived from items)
+  totalTax: { type: Number, default: 0 },
   totalWeight: { type: Number, default: 0 }, // Total weight in kg
   deliveryType: { 
     type: String, 
@@ -28,11 +35,11 @@ const orderSchema = new mongoose.Schema({
     default: 'home_delivery' 
   },
   deliveryCharge: { type: Number, default: 0 },
-  totalAmount: { type: Number, required: true }, // Final amount with delivery
-  status: { 
-    type: String, 
-    enum: ['pending', 'approved', 'rejected', 'ready_for_pickup', 'out_for_delivery', 'delivered', 'collected'], 
-    default: 'pending' 
+  totalAmount: { type: Number }, // Final amount with delivery (set after approval/delivery info)
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'awaiting_payment', 'rejected', 'ready_for_pickup', 'out_for_delivery', 'delivered', 'collected'],
+    default: 'pending'
   },
   deliveryAddress: { type: String },
   pickupCode: { type: String }, // 6-digit code for store pickup verification

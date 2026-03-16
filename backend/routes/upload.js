@@ -1,5 +1,7 @@
 const express = require('express');
 const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const XLSX = require('xlsx');
 const { parse } = require('csv-parse/sync');
 const Product = require('../models/Product');
@@ -9,7 +11,35 @@ const SalesRecord = require('../models/SalesRecord');
 const { auth, adminOnly } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Existing in-memory upload for CSV/Excel
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Disk storage for image uploads
+const imageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dest = path.join(__dirname, '..', 'uploads', 'products');
+    fs.mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const safeName = (file.fieldname || 'image') + '-' + Date.now() + '-' + Math.round(Math.random() * 1e9) + ext;
+    cb(null, safeName);
+  },
+});
+
+const imageUpload = multer({
+  storage: imageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error('Only JPG, PNG, or WEBP images are allowed'));
+    }
+    cb(null, true);
+  },
+});
 
 function normalizeRow(row) {
   const keys = Object.keys(row).map(k => k?.toString().toLowerCase().trim());
@@ -55,6 +85,18 @@ function validateFileStructure(rows, isCsv = true) {
 function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+// Simple endpoint to upload a product image and return its URL
+router.post('/image', auth, adminOnly, imageUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+    const relativePath = `/uploads/products/${req.file.filename}`.replace(/\\/g, '/');
+    const fullUrl = `${req.protocol}://${req.get('host')}${relativePath}`;
+    res.json({ url: fullUrl, path: relativePath });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Image upload failed' });
+  }
+});
 
 router.post('/csv', auth, adminOnly, upload.single('file'), async (req, res) => {
   try {

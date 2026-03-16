@@ -1,5 +1,7 @@
+console.log('Server.js starting...');
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/auth');
@@ -13,6 +15,7 @@ const analyticsRoutes = require('./routes/analytics');
 const uploadRoutes = require('./routes/upload');
 const mlRoutes = require('./routes/ml');
 const paymentRoutes = require('./routes/payments');
+const reviewRoutes = require('./routes/reviews');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -23,12 +26,24 @@ app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve uploaded files (e.g., product images)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smt_agency';
 const PORT = process.env.PORT || 5000;
 
+// Log startup
+console.log('Starting server...');
+console.log('MONGODB_URI:', MONGODB_URI);
+console.log('PORT:', PORT);
+
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error('MongoDB connection error:', err));
+  .catch((err) => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
 
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
@@ -41,11 +56,14 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/ml', mlRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
+
+// Global error handler with logging
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('GLOBAL ERROR HANDLER:', err.stack || err);
   res.status(500).json({ error: err.message || 'Server error' });
 });
 

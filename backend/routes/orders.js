@@ -1,12 +1,38 @@
+
 const express = require('express');
 const Order = require('../models/Order');
 const Stock = require('../models/Stock');
 const Export = require('../models/Export');
 const Product = require('../models/Product');
 const SalesRecord = require('../models/SalesRecord');
+const StockBatch = require('../models/StockBatch');
 const { auth, adminOnly } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Mark store pickup order as ready for pickup (admin only)
+router.patch('/:id/ready-for-pickup', auth, adminOnly, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.deliveryType !== 'store_pickup') {
+      return res.status(400).json({ error: 'This action is only for store pickup orders' });
+    }
+    if (order.status !== 'approved') {
+      return res.status(400).json({ error: 'Only approved orders can be marked as ready for pickup' });
+    }
+    order.status = 'ready_for_pickup';
+    order.statusHistory.push({ status: 'ready_for_pickup', label: 'Ready for Pickup', date: new Date() });
+    // Generate pickup code if not already set
+    if (!order.pickupCode) {
+      order.pickupCode = generatePickupCode();
+    }
+    await order.save();
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Delivery charge calculation constants
 const DELIVERY_CONFIG = {
@@ -126,19 +152,17 @@ router.get('/:id', auth, async (req, res) => {
 // Create order (Agency/Shop Owner)
 router.post('/', auth, async (req, res) => {
   try {
-    const { items, deliveryAddress, notes, deliveryType = 'home_delivery' } = req.body;
+    const { items, deliveryAddress, notes, deliveryType = 'home_delivery', paymentMethod = 'cod' } = req.body;
     
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'Order must have at least one item' });
     }
     
-    // Store pickup doesn't need address, home delivery does
-    if (deliveryType === 'home_delivery' && !deliveryAddress) {
-      return res.status(400).json({ error: 'Delivery address is required for home delivery' });
-    }
+    // Delivery address is not required at order creation. It will be collected later if needed.
     
     // Validate items and calculate totals
     let subtotal = 0;
+    let totalTax = 0;
     let totalWeight = 0;
     const orderItems = [];
     
@@ -152,24 +176,54 @@ router.post('/', auth, async (req, res) => {
       if (!stock || stock.quantity < item.quantity) {
         return res.status(400).json({ error: `Insufficient stock for ${product.name}` });
       }
+
+      // Ensure there is enough non-expired stock using FEFO batches
+      // Treat items as valid for the entire expiry date (>= start of today)
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const batches = await StockBatch.find({
+        product: item.productId,
+        expiryDate: { $gte: startOfToday },
+        remainingQuantity: { $gt: 0 },
+      }).sort({ expiryDate: 1, createdAt: 1 });
+
+      let availableNonExpired = 0;
+      for (const batch of batches) {
+        availableNonExpired += batch.remainingQuantity;
+      }
+      if (availableNonExpired < item.quantity) {
+        return res.status(400).json({
+          error: `Insufficient non-expired stock for ${product.name} (Available: ${availableNonExpired}, Requested: ${item.quantity})`
+        });
+      }
       
       const itemSubtotal = product.price * item.quantity;
       const itemWeight = (product.weight || 1) * item.quantity;
       subtotal += itemSubtotal;
       totalWeight += itemWeight;
+
+      const gstRate = typeof product.gstRate === 'number' ? product.gstRate : 0;
+      const taxableValue = itemSubtotal; // assuming price is before GST
+      const gstAmount = Number(((taxableValue * gstRate) / 100).toFixed(2));
+      const lineTotal = taxableValue + gstAmount;
+      totalTax += gstAmount;
       
       orderItems.push({
         product: product._id,
         productName: product.name,
         quantity: item.quantity,
         price: product.price,
-        subtotal: itemSubtotal
+        subtotal: itemSubtotal,
+        gstRate,
+        taxableValue,
+        gstAmount,
+        lineTotal
       });
     }
     
     // Calculate delivery charge
-    const { deliveryCharge, breakdown } = calculateDeliveryCharge(subtotal, totalWeight, deliveryType);
-    const totalAmount = subtotal + deliveryCharge;
+    const { deliveryCharge, breakdown } = calculateDeliveryCharge(subtotal + totalTax, totalWeight, deliveryType);
+    const totalAmount = subtotal + totalTax + deliveryCharge;
     
     const orderNumber = await Order.generateOrderNumber();
     
@@ -182,6 +236,7 @@ router.post('/', auth, async (req, res) => {
       agencyName: req.user.agencyName || req.user.name,
       items: orderItems,
       subtotal,
+      totalTax,
       totalWeight,
       deliveryType,
       deliveryCharge,
@@ -189,6 +244,7 @@ router.post('/', auth, async (req, res) => {
       deliveryAddress: deliveryType === 'home_delivery' ? deliveryAddress : 'Store Pickup - SMT Agency',
       pickupCode,
       notes,
+      paymentMethod,
       statusHistory: [
         {
           status: 'pending',
@@ -196,6 +252,7 @@ router.post('/', auth, async (req, res) => {
           date: new Date()
         }
       ]
+      // Do NOT set paymentStatus at creation
     });
     
     const populatedOrder = await Order.findById(order._id)
@@ -231,11 +288,41 @@ router.patch('/:id/approve', auth, adminOnly, async (req, res) => {
     
     // Create exports and update stock for each item
     for (const item of order.items) {
-      // Deduct from stock
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      let remainingToDeduct = item.quantity;
+
+      // Deduct from stock batches (FEFO based on expiryDate)
+      const batches = await StockBatch.find({
+        product: item.product,
+        expiryDate: { $gte: startOfToday },
+        remainingQuantity: { $gt: 0 },
+      }).sort({ expiryDate: 1, createdAt: 1 });
+
+      for (const batch of batches) {
+        if (remainingToDeduct <= 0) break;
+        const take = Math.min(batch.remainingQuantity, remainingToDeduct);
+        batch.remainingQuantity -= take;
+        if (batch.remainingQuantity === 0) {
+          batch.exhaustedAt = new Date();
+        }
+        await batch.save();
+        remainingToDeduct -= take;
+      }
+
+      if (remainingToDeduct > 0) {
+        return res.status(400).json({
+          error: `Insufficient non-expired stock for ${item.productName} while approving order (Remaining needed: ${remainingToDeduct})`
+        });
+      }
+
+      // Deduct from aggregated stock record
       const stock = await Stock.findOne({ product: item.product });
-      stock.quantity -= item.quantity;
-      stock.lastUpdated = new Date();
-      await stock.save();
+      if (stock) {
+        stock.quantity -= item.quantity;
+        stock.lastUpdated = new Date();
+        await stock.save();
+      }
       
       // Create export record
       await Export.create({
@@ -260,16 +347,17 @@ router.patch('/:id/approve', auth, adminOnly, async (req, res) => {
       );
     }
     
-    // Update order status based on delivery type
+    // After admin approval, set status based on payment method
     const now = new Date();
-    if (order.deliveryType === 'store_pickup') {
-      order.status = 'ready_for_pickup';
-      order.statusHistory.push({ status: 'ready_for_pickup', label: 'Ready for Pickup', date: now });
-    } else {
+    if (order.paymentMethod === 'cod') {
       order.status = 'approved';
       order.statusHistory.push({ status: 'approved', label: 'Order Approved', date: now });
+      order.invoiceNumber = invoiceNumber; // Only set invoice for COD here
+    } else {
+      order.status = 'awaiting_payment';
+      order.statusHistory.push({ status: 'awaiting_payment', label: 'Awaiting Payment', date: now });
+      // Do NOT set invoiceNumber for online yet
     }
-    order.invoiceNumber = invoiceNumber;
     order.approvedAt = new Date();
     order.approvedBy = req.user._id;
     await order.save();
@@ -320,11 +408,23 @@ router.patch('/:id/out-for-delivery', auth, adminOnly, async (req, res) => {
     if (order.deliveryType !== 'home_delivery') {
       return res.status(400).json({ error: 'This action is only for home delivery orders' });
     }
-    
-    if (order.status !== 'approved') {
-      return res.status(400).json({ error: 'Only approved orders can be marked as out for delivery' });
+
+    const isApproved = order.status === 'approved';
+    const isPaidOnlineAwaiting =
+      order.status === 'awaiting_payment' &&
+      order.paymentMethod === 'stripe' &&
+      order.paymentStatus === 'paid';
+
+    if (!isApproved && !isPaidOnlineAwaiting) {
+      return res.status(400).json({ error: 'Only approved or fully paid online orders can be marked as out for delivery' });
     }
-    
+
+    // If it was awaiting_payment but now fully paid online, log approval in history
+    if (isPaidOnlineAwaiting) {
+      const now = new Date();
+      order.statusHistory.push({ status: 'approved', label: 'Payment received - Approved', date: now });
+    }
+
     order.status = 'out_for_delivery';
     order.statusHistory.push({ status: 'out_for_delivery', label: 'Out for Delivery', date: new Date() });
     await order.save();
@@ -354,7 +454,9 @@ router.patch('/:id/deliver', auth, adminOnly, async (req, res) => {
     }
     
     order.status = 'delivered';
-    order.deliveredAt = new Date();
+    const deliveredAt = new Date();
+    order.deliveredAt = deliveredAt;
+    order.statusHistory.push({ status: 'delivered', label: 'Delivered', date: deliveredAt });
     await order.save();
     
     const populatedOrder = await Order.findById(order._id)
@@ -389,7 +491,9 @@ router.patch('/:id/collect', auth, adminOnly, async (req, res) => {
     }
     
     order.status = 'collected';
-    order.collectedAt = new Date();
+    const collectedAt = new Date();
+    order.collectedAt = collectedAt;
+    order.statusHistory.push({ status: 'collected', label: 'Collected', date: collectedAt });
     await order.save();
     
     const populatedOrder = await Order.findById(order._id)

@@ -9,6 +9,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import UserDashboard from './pages/UserDashboard';
 import Products from './pages/Products';
 import AgencyProducts from './pages/AgencyProducts';
+import ProductDetail from './pages/ProductDetail';
 import Imports from './pages/Imports';
 import Exports from './pages/Exports';
 import Stock from './pages/Stock';
@@ -19,6 +20,7 @@ import Payment from './pages/Payment';
 import Analytics from './pages/Analytics';
 import Upload from './pages/Upload';
 import MLPredict from './pages/MLPredict';
+import Reviews from './pages/Reviews';
 
 function NavigateToRole() {
   const { user } = useAuth();
@@ -66,12 +68,14 @@ export default function App() {
         />
         <Route path="agency" element={<PrivateRoute agencyOnly><UserDashboard /></PrivateRoute>} />
         <Route path="agency-products" element={<PrivateRoute agencyOnly><AgencyProducts /></PrivateRoute>} />
+        <Route path="agency-products/:id" element={<PrivateRoute agencyOnly><ProductDetail /></PrivateRoute>} />
         <Route path="products" element={<PrivateRoute adminOnly><Products /></PrivateRoute>} />
         <Route path="imports" element={<PrivateRoute adminOnly><Imports /></PrivateRoute>} />
         <Route path="exports" element={<PrivateRoute adminOnly><Exports /></PrivateRoute>} />
         <Route path="stock" element={<PrivateRoute adminOnly><Stock /></PrivateRoute>} />
         <Route path="requests" element={<PrivateRoute><Requests /></PrivateRoute>} />
         <Route path="orders" element={<PrivateRoute adminOnly><Orders /></PrivateRoute>} />
+        <Route path="reviews" element={<PrivateRoute adminOnly><Reviews /></PrivateRoute>} />
         <Route path="my-orders" element={<PrivateRoute agencyOnly><MyOrders /></PrivateRoute>} />
         <Route path="payment/:orderId" element={<PrivateRoute agencyOnly><Payment /></PrivateRoute>} />
         <Route path="analytics" element={<PrivateRoute adminOnly><Analytics /></PrivateRoute>} />

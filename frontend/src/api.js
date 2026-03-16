@@ -22,4 +22,17 @@ api.interceptors.response.use(
   }
 );
 
+export const uploadCsv = (formData) =>
+  api.post('/upload/csv', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+
+export const uploadProductImage = (file) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  return api.post('/upload/image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
 export default api;

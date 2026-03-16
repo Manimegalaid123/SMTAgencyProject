@@ -84,19 +84,28 @@ export default function AgencyProducts() {
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('table');
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [checkoutForm, setCheckoutForm] = useState({ 
-    address: '', 
-    notes: '', 
+  const [checkoutForm, setCheckoutForm] = useState({
     deliveryType: 'home_delivery',
-    paymentMethod: 'cod'
+    address: '',
+    notes: '',
+    paymentMethod: 'cod' // 'cod' or 'stripe'
   });
   const [submitting, setSubmitting] = useState(false);
   const [deliveryCalc, setDeliveryCalc] = useState(null);
   const [calcLoading, setCalcLoading] = useState(false);
   const [qtyInputs, setQtyInputs] = useState({});
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationResults, setLocationResults] = useState([]);
+  const [locationSearching, setLocationSearching] = useState(false);
+  const [zoomProduct, setZoomProduct] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortOption, setSortOption] = useState('popular');
+  const [hoverZoom, setHoverZoom] = useState({ productId: null, x: 50, y: 50, active: false });
+  const [overlayZoom, setOverlayZoom] = useState({ x: 50, y: 50, active: false });
+
+  const formatDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
   const fetchProducts = () => {
     api.get('/products')
@@ -128,6 +137,18 @@ export default function AgencyProducts() {
   const qty = (p) => p.stock ?? p.availableQuantity ?? 0;
   const availabilityStatus = (p) => p.availabilityStatus ?? p.status ?? (qty(p) > 0 ? 'Available' : 'Out of Stock');
   const canOrder = (p) => availabilityStatus(p) === 'Available' && qty(p) > 0;
+
+  const renderRating = (p) => {
+    const count = p.reviewCount || 0;
+    const avg = p.avgRating || 0;
+    if (!count) return null;
+    return (
+      <span className="product-rating">
+        <span className="stars">★ {avg.toFixed(1)}</span>
+        <span className="count">({count})</span>
+      </span>
+    );
+  };
   
   const getCartItemQty = (productId) => {
     const item = cartItems.find(i => i.productId === productId);
@@ -150,7 +171,6 @@ export default function AgencyProducts() {
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
     if (cartItems.length === 0) return;
-    
     setSubmitting(true);
     try {
       const orderData = {
@@ -158,42 +178,18 @@ export default function AgencyProducts() {
           productId: item.productId,
           quantity: item.quantity
         })),
+        notes: checkoutForm.notes || undefined,
         deliveryType: checkoutForm.deliveryType,
-        paymentMethod: checkoutForm.paymentMethod,
-        notes: checkoutForm.notes || undefined
+        deliveryAddress: checkoutForm.deliveryType === 'home_delivery' ? checkoutForm.address : undefined,
+           paymentMethod: checkoutForm.paymentMethod || 'cod', // 'cod' or 'stripe'
       };
-      
-      // Only include address for home delivery
-      if (checkoutForm.deliveryType === 'home_delivery') {
-        orderData.deliveryAddress = checkoutForm.address;
-      }
-      
       const { data: order } = await api.post('/orders', orderData);
-      
-      // If online payment selected, go to our payment page first
-      if (checkoutForm.paymentMethod === 'stripe') {
-        setCheckoutOpen(false);
-        setCartOpen(false);
-        setCheckoutForm({ address: '', notes: '', deliveryType: 'home_delivery', paymentMethod: 'cod' });
-        setDeliveryCalc(null);
-        
-        // Go to payment page with choice
-        navigate(`/payment/${order._id}`);
-        return;
-      }
-      
       clearCart();
       setCheckoutOpen(false);
       setCartOpen(false);
-      setCheckoutForm({ address: '', notes: '', deliveryType: 'home_delivery', paymentMethod: 'cod' });
+      setCheckoutForm({ deliveryType: 'home_delivery', address: '', notes: '' });
       setDeliveryCalc(null);
-      
-      // Show different message based on delivery type
-      if (checkoutForm.deliveryType === 'store_pickup') {
-        alert(`Order placed successfully!\n\nYour Pickup Code: ${order.pickupCode}\n\nPlease save this code. You'll need it when collecting your order from SMT Agency.`);
-      } else {
-        alert('Order placed successfully! The admin will review your order.');
-      }
+      alert('Order placed successfully! The admin will review your order.');
       navigate('/my-orders');
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to place order');
@@ -201,6 +197,77 @@ export default function AgencyProducts() {
       setSubmitting(false);
     }
   };
+
+  const handleSearchLocation = async () => {
+    const query = locationQuery.trim();
+    if (!query) return;
+    try {
+      setLocationSearching(true);
+      setLocationResults([]);
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&addressdetails=1&limit=5`;
+      const res = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      const data = await res.json();
+      setLocationResults(Array.isArray(data) ? data : []);
+    } catch (err) {
+      alert('Unable to search location. Please try again.');
+    } finally {
+      setLocationSearching(false);
+    }
+  };
+
+  const handleImageMouseMove = (e, productId) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setHoverZoom({ productId, x, y, active: true });
+  };
+
+  const handleImageMouseLeave = () => {
+    setHoverZoom(prev => ({ ...prev, active: false }));
+  };
+
+  const handleOverlayMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setOverlayZoom({ x, y, active: true });
+  };
+
+  const handleOverlayMouseLeave = () => {
+    setOverlayZoom(prev => ({ ...prev, active: false }));
+  };
+
+  const filteredProducts = React.useMemo(() => {
+    let result = products;
+
+    const term = searchTerm.trim().toLowerCase();
+    if (term) {
+      result = result.filter((p) => {
+        const name = (p.name || '').toLowerCase();
+        return name.includes(term);
+      });
+    }
+
+    const sorted = [...result];
+    if (sortOption === 'price_low') {
+      sorted.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    } else if (sortOption === 'price_high') {
+      sorted.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+    } else {
+      // popular: higher review count and rating first
+      sorted.sort((a, b) => {
+        const scoreA = (a.reviewCount || 0) * 10 + (a.avgRating || 0);
+        const scoreB = (b.reviewCount || 0) * 10 + (b.avgRating || 0);
+        return scoreB - scoreA;
+      });
+    }
+
+    return sorted;
+  }, [products, searchTerm, sortOption]);
 
   if (loading) return <div className="page-loading">Loading...</div>;
 
@@ -210,10 +277,6 @@ export default function AgencyProducts() {
         <h1 className="page-title">SMT Agency Products</h1>
         <p className="page-desc">Browse products and add to cart. Place your order when ready.</p>
         <div className="page-header-actions">
-          <div className="view-toggle">
-            <button type="button" className={viewMode === 'table' ? 'active' : ''} onClick={() => setViewMode('table')}>Table</button>
-            <button type="button" className={viewMode === 'cards' ? 'active' : ''} onClick={() => setViewMode('cards')}>Cards</button>
-          </div>
           <button className="btn-cart" onClick={() => setCartOpen(true)}>
             <IconCart />
             Cart ({getCartCount()})
@@ -221,95 +284,121 @@ export default function AgencyProducts() {
           </button>
         </div>
       </div>
-
-      {viewMode === 'table' ? (
-        <div className="table-wrap products-table-wrap">
-          <table className="data-table products-table">
-            <thead>
-              <tr>
-                <th>Product Name</th>
-                <th>Category</th>
-                <th>Price (₹)</th>
-                <th>Availability</th>
-                <th>Qty</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((p) => (
-                <tr key={p._id}>
-                  <td className="product-name-cell">{p.name}</td>
-                  <td>{p.category || 'FMCG'}</td>
-                  <td>₹{Number(p.price).toLocaleString('en-IN')}</td>
-                  <td>
-                    <span className={`badge badge-${availabilityStatus(p) === 'Available' ? 'success' : 'danger'}`}>
-                      {availabilityStatus(p)}
-                    </span>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="1"
-                      value={getQtyInput(p._id)}
-                      onChange={(e) => setQtyInput(p._id, e.target.value)}
-                      className="qty-input-small"
-                      disabled={!canOrder(p)}
-                    />
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn-sm primary add-cart-btn"
-                      onClick={() => handleAddToCart(p)}
-                      disabled={!canOrder(p)}
-                    >
-                      <IconCart /> Add {getCartItemQty(p._id) > 0 && `(${getCartItemQty(p._id)} in cart)`}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="products-toolbar">
+        <div className="products-search">
+          <input
+            type="text"
+            className="input"
+            placeholder="Search products by name"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-      ) : (
-        <div className="products-grid">
-          {products.map((p) => (
-            <div key={p._id} className="product-card">
-              <div className="product-name">{p.name}</div>
-              <div className="product-category">{p.category || 'FMCG'}</div>
-              <div className="product-meta">
-                <span>₹{Number(p.price).toLocaleString('en-IN')} / unit</span>
-              </div>
-              <div className="product-status">
-                <span className={`badge badge-${availabilityStatus(p) === 'Available' ? 'success' : 'danger'}`}>
-                  {availabilityStatus(p)}
-                </span>
-              </div>
-              <div className="product-actions add-cart-row">
-                <input
-                  type="number"
-                  min="1"
-                  value={getQtyInput(p._id)}
-                  onChange={(e) => setQtyInput(p._id, e.target.value)}
-                  className="qty-input-small"
-                  disabled={!canOrder(p)}
+        <div className="products-sort-tabs">
+            <button
+              type="button"
+              className={sortOption === 'popular' ? 'sort-tab active' : 'sort-tab'}
+              onClick={() => setSortOption('popular')}
+            >
+              Popular
+            </button>
+            <button
+              type="button"
+              className={sortOption === 'price_low' ? 'sort-tab active' : 'sort-tab'}
+              onClick={() => setSortOption('price_low')}
+            >
+              Low Price
+            </button>
+            <button
+              type="button"
+              className={sortOption === 'price_high' ? 'sort-tab active' : 'sort-tab'}
+              onClick={() => setSortOption('price_high')}
+            >
+              High Price
+            </button>
+          </div>
+      </div>
+
+      <div className="products-grid">
+        {filteredProducts.map((p) => {
+          const mainImage = p.imageUrl || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
+          return (
+          <div key={p._id} className="product-card">
+            {mainImage && (
+              <div
+                className="product-image-wrap zoomable"
+                onClick={() => setZoomProduct(p)}
+                onMouseMove={(e) => handleImageMouseMove(e, p._id)}
+                onMouseLeave={handleImageMouseLeave}
+              >
+                <img
+                  src={mainImage}
+                  alt={p.name}
+                  className="product-image"
+                  loading="lazy"
+                  style={
+                    hoverZoom.active && hoverZoom.productId === p._id
+                      ? {
+                          transformOrigin: `${hoverZoom.x}% ${hoverZoom.y}%`,
+                          transform: 'scale(1.5)'
+                        }
+                      : undefined
+                  }
                 />
-                <button
-                  type="button"
-                  className="btn-sm primary add-cart-btn"
-                  onClick={() => handleAddToCart(p)}
-                  disabled={!canOrder(p)}
-                >
-                  <IconCart /> Add
-                </button>
               </div>
-              {getCartItemQty(p._id) > 0 && (
-                <div className="in-cart-info">
-                  {getCartItemQty(p._id)} in cart
-                </div>
+            )}
+            <div className="product-name">{p.name}{p.packSize ? ` (${p.packSize})` : ''}</div>
+            {renderRating(p)}
+            <div className="product-category">{p.category || 'FMCG'}</div>
+            <div className="product-meta">
+              <span>₹{Number(p.price).toLocaleString('en-IN')} / unit</span>
+              {p.expiryDate && (
+                <span className="expiry-badge">Expiry: {formatDate(p.expiryDate)}</span>
               )}
             </div>
-          ))}
+            <div className="product-status">
+              <span className={`badge badge-${availabilityStatus(p) === 'Available' ? 'success' : 'danger'}`}>
+                {availabilityStatus(p)}
+              </span>
+            </div>
+            <div className="product-actions add-cart-row">
+              <input
+                type="number"
+                min="1"
+                value={getQtyInput(p._id)}
+                onChange={(e) => setQtyInput(p._id, e.target.value)}
+                className="qty-input-small"
+                disabled={!canOrder(p)}
+              />
+              <button
+                type="button"
+                className="btn-sm primary add-cart-btn"
+                onClick={() => handleAddToCart(p)}
+                disabled={!canOrder(p)}
+              >
+                <IconCart /> Add
+              </button>
+              <button
+                type="button"
+                className="btn-sm"
+                onClick={() => navigate(`/agency-products/${p._id}`)}
+              >
+                View details
+              </button>
+            </div>
+            {getCartItemQty(p._id) > 0 && (
+              <div className="in-cart-info">
+                {getCartItemQty(p._id)} in cart
+              </div>
+            )}
+          </div>
+        );
+        })}
+      </div>
+
+      {filteredProducts.length === 0 && products.length > 0 && (
+        <div className="empty-state">
+          <p>No products match your search.</p>
         </div>
       )}
 
@@ -496,6 +585,85 @@ export default function AgencyProducts() {
                     className="input"
                     rows={3}
                   />
+                  <button
+                    type="button"
+                    className="btn-secondary btn-use-location"
+                    onClick={async () => {
+                      if (!navigator.geolocation) {
+                        alert('Location is not supported in this browser.');
+                        return;
+                      }
+                      try {
+                        await new Promise((resolve, reject) => {
+                          navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            enableHighAccuracy: true,
+                            timeout: 15000,
+                            maximumAge: 0,
+                          });
+                        }).then(async (pos) => {
+                          const { latitude, longitude } = pos.coords;
+                          const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=jsonv2`;
+                          const res = await fetch(url, {
+                            headers: {
+                              'Accept': 'application/json',
+                            },
+                          });
+                          const data = await res.json();
+                          const formatted = data.display_name;
+                          if (formatted) {
+                            setCheckoutForm((prev) => ({ ...prev, address: formatted }));
+                          } else {
+                            alert('Could not detect address from your location.');
+                          }
+                        });
+                      } catch (err) {
+                        alert('Unable to fetch your location. Please enter address manually.');
+                      }
+                    }}
+                    style={{ marginTop: '0.5rem' }}
+                  >
+                    Use my location
+                  </button>
+                  <label className="form-label" style={{ marginTop: '0.75rem' }}>Search location (optional)</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input
+                      type="text"
+                      placeholder="Type area or city name, e.g. Erode"
+                      value={locationQuery}
+                      onChange={(e) => setLocationQuery(e.target.value)}
+                      className="input"
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={handleSearchLocation}
+                      disabled={locationSearching}
+                    >
+                      {locationSearching ? 'Searching...' : 'Search'}
+                    </button>
+                  </div>
+                  {locationResults.length > 0 && (
+                    <div className="location-search-results" style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: '0.5rem' }}>
+                      {locationResults.map((r) => (
+                        <button
+                          key={r.place_id}
+                          type="button"
+                          className="btn-secondary"
+                          style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: '0.25rem', whiteSpace: 'normal' }}
+                          onClick={() => {
+                            const addr = r.display_name;
+                            if (addr) {
+                              setCheckoutForm((prev) => ({ ...prev, address: addr }));
+                            }
+                            setLocationResults([]);
+                          }}
+                        >
+                          {r.display_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
               
@@ -516,46 +684,53 @@ export default function AgencyProducts() {
                 className="input"
                 rows={2}
               />
-              
-              {/* Payment Method Selection */}
+
+
+              {/* Payment Method Selection - Card Style */}
               <div className="payment-method-section">
-                <h3><IconCreditCard /> Payment Method</h3>
-                <div className="payment-options">
-                  <label className={`payment-option ${checkoutForm.paymentMethod === 'cod' ? 'selected' : ''}`}>
+                <h3><span style={{marginRight: 8}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>Payment Method</h3>
+                <div className="payment-options card-style">
+                  <label className={`payment-option-card ${checkoutForm.paymentMethod === 'cod' ? 'selected' : ''}`} style={{display: 'flex',alignItems: 'center',border: checkoutForm.paymentMethod === 'cod' ? '2px solid #198754' : '1px solid #ccc',borderRadius: 12,padding: 16,marginBottom: 12,background: checkoutForm.paymentMethod === 'cod' ? '#f6fbf7' : '#fff',cursor: 'pointer'}}>
                     <input
                       type="radio"
                       name="paymentMethod"
                       value="cod"
                       checked={checkoutForm.paymentMethod === 'cod'}
-                      onChange={(e) => setCheckoutForm({ ...checkoutForm, paymentMethod: e.target.value })}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, paymentMethod: e.target.value })}
+                      style={{marginRight: 16}}
                     />
-                    <div className="option-content">
-                      <span className="option-icon"><IconCash /></span>
-                      <div className="option-info">
-                        <strong>Cash on Delivery</strong>
-                        <small>Pay when you receive your order</small>
-                      </div>
-                    </div>
+                    <span style={{display: 'flex',alignItems: 'center'}}>
+                      <span style={{background: '#198754', color: '#fff', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 16}}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>
+                      </span>
+                      <span>
+                        <strong>Cash on Delivery</strong><br/>
+                        <span style={{fontSize: 13, color: '#555'}}>Pay when you receive your order</span>
+                      </span>
+                    </span>
                   </label>
-                  <label className={`payment-option ${checkoutForm.paymentMethod === 'stripe' ? 'selected' : ''}`}>
+                  <label className={`payment-option-card ${checkoutForm.paymentMethod === 'stripe' ? 'selected' : ''}`} style={{display: 'flex',alignItems: 'center',border: checkoutForm.paymentMethod === 'stripe' ? '2px solid #198754' : '1px solid #ccc',borderRadius: 12,padding: 16,background: checkoutForm.paymentMethod === 'stripe' ? '#f6fbf7' : '#fff',cursor: 'pointer'}}>
                     <input
                       type="radio"
                       name="paymentMethod"
                       value="stripe"
                       checked={checkoutForm.paymentMethod === 'stripe'}
-                      onChange={(e) => setCheckoutForm({ ...checkoutForm, paymentMethod: e.target.value })}
+                      onChange={e => setCheckoutForm({ ...checkoutForm, paymentMethod: e.target.value })}
+                      style={{marginRight: 16}}
                     />
-                    <div className="option-content">
-                      <span className="option-icon"><IconCreditCard /></span>
-                      <div className="option-info">
-                        <strong>Pay Online</strong>
-                        <small>Secure payment via Stripe (Cards, UPI, etc.)</small>
-                      </div>
-                    </div>
+                    <span style={{display: 'flex',alignItems: 'center'}}>
+                      <span style={{background: '#198754', color: '#fff', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 16}}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                      </span>
+                      <span>
+                        <strong>Pay Online</strong><br/>
+                        <span style={{fontSize: 13, color: '#555'}}>Secure payment via Stripe (Cards, UPI, etc.)</span>
+                      </span>
+                    </span>
                   </label>
                 </div>
               </div>
-              
+
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={() => setCheckoutOpen(false)}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={submitting || calcLoading}>
@@ -563,6 +738,46 @@ export default function AgencyProducts() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {zoomProduct && (zoomProduct.imageUrl || (Array.isArray(zoomProduct.images) && zoomProduct.images[0])) && (
+        <div className="image-zoom-overlay" onClick={() => setZoomProduct(null)}>
+          <div className="image-zoom-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="image-zoom-close"
+              onClick={() => setZoomProduct(null)}
+            >
+              ×
+            </button>
+            <div className="image-zoom-img-wrap">
+              <img
+                src={zoomProduct.imageUrl || (Array.isArray(zoomProduct.images) && zoomProduct.images[0])}
+                alt={zoomProduct.name}
+                className="image-zoom-img"
+                onMouseMove={handleOverlayMouseMove}
+                onMouseLeave={handleOverlayMouseLeave}
+                style={
+                  overlayZoom.active
+                    ? {
+                        transformOrigin: `${overlayZoom.x}% ${overlayZoom.y}%`,
+                        transform: 'scale(2.4)'
+                      }
+                    : undefined
+                }
+              />
+            </div>
+            <div className="image-zoom-info">
+              <h3>
+                {zoomProduct.name}
+                {zoomProduct.packSize ? ` (${zoomProduct.packSize})` : ''}
+              </h3>
+              {zoomProduct.category && (
+                <p className="image-zoom-meta">{zoomProduct.category}</p>
+              )}
+            </div>
           </div>
         </div>
       )}

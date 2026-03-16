@@ -686,6 +686,16 @@
   color: #ef4444;
 }
 
+.notification-item.expiry .notification-icon {
+  background: rgba(59, 130, 246, 0.15);
+  color: #1d4ed8;
+}
+
+.notification-item.expired .notification-icon {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
 .notification-content {
   flex: 1;
   min-width: 0;

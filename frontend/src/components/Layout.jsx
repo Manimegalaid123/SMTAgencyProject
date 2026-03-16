@@ -119,6 +119,7 @@ const adminNav = [
   { to: '/stock', label: 'Stock', icon: <IconTag /> },
   { to: '/orders', label: 'Orders', icon: <IconShoppingCart /> },
   { to: '/requests', label: 'Enquiries', icon: <IconClipboard /> },
+  { to: '/reviews', label: 'Reviews', icon: <IconClipboard /> },
   { to: '/analytics', label: 'Analytics', icon: <IconChart /> },
   { to: '/upload', label: 'Upload Data', icon: <IconUpload /> },
   { to: '/predict', label: 'ML Prediction', icon: <IconCpu /> },
@@ -146,7 +147,10 @@ export default function Layout() {
   const [notifications, setNotifications] = useState({
     pendingOrders: 0,
     pendingEnquiries: 0,
-    lowStockItems: []
+    lowStockItems: [],
+    nearExpiryBatches: [],
+    expiredBatches: [],
+    pendingReviews: 0,
   });
   
   const nav = user?.role === 'admin' ? adminNav : agencyNav;
@@ -156,17 +160,22 @@ export default function Layout() {
     if (user?.role !== 'admin') return;
     
     try {
-      const [ordersRes, requestsRes, stockRes] = await Promise.all([
+      const [ordersRes, requestsRes, stockRes, expiryRes, reviewsRes] = await Promise.all([
         api.get('/orders').catch(() => ({ data: [] })),
         api.get('/requests').catch(() => ({ data: [] })),
-        api.get('/stock').catch(() => ({ data: [] }))
+        api.get('/stock').catch(() => ({ data: [] })),
+        api.get('/stock/reports/expiry').catch(() => ({ data: { nearExpiry: [], expired: [] } })),
+        api.get('/reviews/admin/pending').catch(() => ({ data: [] })),
       ]);
       
       const pendingOrders = ordersRes.data.filter(o => o.status === 'pending').length;
       const pendingEnquiries = requestsRes.data.filter(r => r.status === 'pending').length;
       const lowStockItems = stockRes.data.filter(s => s.quantity < 10);
+      const nearExpiryBatches = expiryRes.data?.nearExpiry || [];
+      const expiredBatches = expiryRes.data?.expired || [];
+      const pendingReviews = (reviewsRes.data || []).length;
       
-      setNotifications({ pendingOrders, pendingEnquiries, lowStockItems });
+      setNotifications({ pendingOrders, pendingEnquiries, lowStockItems, nearExpiryBatches, expiredBatches, pendingReviews });
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
     }
@@ -179,7 +188,13 @@ export default function Layout() {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
-  const totalNotifications = notifications.pendingOrders + notifications.pendingEnquiries + notifications.lowStockItems.length;
+  const totalNotifications =
+    notifications.pendingOrders +
+    notifications.pendingEnquiries +
+    notifications.lowStockItems.length +
+    notifications.nearExpiryBatches.length +
+    notifications.expiredBatches.length +
+    notifications.pendingReviews;
 
   const handleLogout = () => {
     logout();
@@ -253,6 +268,7 @@ export default function Layout() {
               if (to === '/orders') badgeCount = notifications.pendingOrders;
               if (to === '/requests') badgeCount = notifications.pendingEnquiries;
               if (to === '/stock') badgeCount = notifications.lowStockItems.length;
+              if (to === '/reviews') badgeCount = notifications.pendingReviews;
             }
             
             return (
@@ -408,6 +424,57 @@ export default function Layout() {
                                 <span>
                                   {notifications.lowStockItems.slice(0, 2).map(s => s.product?.name || 'Item').join(', ')}
                                   {notifications.lowStockItems.length > 2 && ` +${notifications.lowStockItems.length - 2} more`}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {notifications.pendingReviews > 0 && (
+                            <div 
+                              className="notification-item request"
+                              onClick={() => { navigate('/reviews'); setNotificationOpen(false); }}
+                            >
+                              <div className="notification-icon">
+                                <IconClipboard />
+                              </div>
+                              <div className="notification-content">
+                                <strong>{notifications.pendingReviews} Pending Review{notifications.pendingReviews > 1 ? 's' : ''}</strong>
+                                <span>Approve or reject product reviews</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {notifications.nearExpiryBatches.length > 0 && (
+                            <div 
+                              className="notification-item expiry"
+                              onClick={() => { navigate('/stock'); setNotificationOpen(false); }}
+                            >
+                              <div className="notification-icon">
+                                <IconAlertTriangle />
+                              </div>
+                              <div className="notification-content">
+                                <strong>{notifications.nearExpiryBatches.length} Near-Expiry Batch{notifications.nearExpiryBatches.length > 1 ? 'es' : ''}</strong>
+                                <span>
+                                  {notifications.nearExpiryBatches.slice(0, 2).map(b => b.name || 'Item').join(', ')}
+                                  {notifications.nearExpiryBatches.length > 2 && ` +${notifications.nearExpiryBatches.length - 2} more`}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {notifications.expiredBatches.length > 0 && (
+                            <div 
+                              className="notification-item expired"
+                              onClick={() => { navigate('/stock'); setNotificationOpen(false); }}
+                            >
+                              <div className="notification-icon warning">
+                                <IconAlertTriangle />
+                              </div>
+                              <div className="notification-content">
+                                <strong>{notifications.expiredBatches.length} Expired Batch{notifications.expiredBatches.length > 1 ? 'es' : ''}</strong>
+                                <span>
+                                  {notifications.expiredBatches.slice(0, 2).map(b => b.name || 'Item').join(', ')}
+                                  {notifications.expiredBatches.length > 2 && ` +${notifications.expiredBatches.length - 2} more`}
                                 </span>
                               </div>
                             </div>

@@ -65,13 +65,17 @@ export default function Payment() {
     return <div className="stripe-page"><div className="stripe-loading">Loading...</div></div>;
   }
 
+  // Calculate grand total (with GST)
+  const gst = order?.totalAmount ? order.totalAmount * 0.18 : 0;
+  const grandTotal = order?.totalAmount ? order.totalAmount + gst : 0;
+
   if (success) {
     return (
       <div className="stripe-page">
         <div className="payment-success">
           <div className="success-icon"><IconCheck /></div>
           <h2>Payment Successful!</h2>
-          <p>₹{order?.totalAmount?.toLocaleString('en-IN')} paid</p>
+          <p>₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })} paid</p>
           <p className="redirect-text">Redirecting...</p>
         </div>
       </div>
@@ -88,7 +92,8 @@ export default function Payment() {
           </div>
           <div className="dummy-amount">
             <span>Pay</span>
-            <h2>₹{order?.totalAmount?.toLocaleString('en-IN')}</h2>
+            <h2>₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h2>
+            <div className="dummy-breakdown">(Invoice + Delivery + GST 18%)</div>
           </div>
           <div className="dummy-info">
             <p>This is a dummy payment for testing purposes.</p>
@@ -124,7 +129,8 @@ export default function Payment() {
         </div>
         <div className="choice-amount">
           <span>Amount to Pay</span>
-          <h1>₹{order?.totalAmount?.toLocaleString('en-IN')}</h1>
+          <h1>₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h1>
+          <div className="choice-breakdown">(Invoice + Delivery + GST 18%)</div>
         </div>
         <div className="choice-items">
           {order?.items?.slice(0, 3).map((item, idx) => (

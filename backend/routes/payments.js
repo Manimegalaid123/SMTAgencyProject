@@ -23,6 +23,10 @@ router.post('/create-checkout-session', auth, async (req, res) => {
       return res.status(403).json({ error: 'Not authorized' });
     }
     
+    // Block payment unless order is in 'awaiting_payment' status
+    if (order.status !== 'awaiting_payment') {
+      return res.status(400).json({ error: 'Payment is only allowed after admin approval and after you provide delivery information.' });
+    }
     // Check if already paid
     if (order.paymentStatus === 'paid') {
       return res.status(400).json({ error: 'Order already paid' });
@@ -100,6 +104,16 @@ router.post('/test-pay', auth, async (req, res) => {
     order.amountPaid = order.totalAmount;
     order.paidAt = new Date();
     order.stripePaymentIntentId = 'test_' + Date.now(); // Fake ID for test mode
+    // If order was awaiting_payment after admin approval, mark it approved now
+    if (order.status === 'awaiting_payment') {
+      order.status = 'approved';
+      const now = new Date();
+      order.statusHistory.push({ status: 'approved', label: 'Payment received - Approved', date: now });
+    }
+    // Set invoiceNumber if not already set
+    if (!order.invoiceNumber) {
+      order.invoiceNumber = await Order.generateInvoiceNumber();
+    }
     await order.save();
     
     res.json({ success: true, message: 'Payment successful (Test Mode)' });
@@ -129,6 +143,16 @@ router.get('/verify/:orderId', auth, async (req, res) => {
       order.amountPaid = order.totalAmount;
       order.paidAt = new Date();
       order.stripePaymentIntentId = session.payment_intent;
+      // If order was awaiting_payment after admin approval, mark it approved now
+      if (order.status === 'awaiting_payment') {
+        order.status = 'approved';
+        const now = new Date();
+        order.statusHistory.push({ status: 'approved', label: 'Payment received - Approved', date: now });
+      }
+      // Set invoiceNumber if not already set
+      if (!order.invoiceNumber) {
+        order.invoiceNumber = await Order.generateInvoiceNumber();
+      }
       await order.save();
     }
     
@@ -168,6 +192,16 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       order.amountPaid = order.totalAmount;
       order.paidAt = new Date();
       order.stripePaymentIntentId = session.payment_intent;
+      // If order was awaiting_payment after admin approval, mark it approved now
+      if (order.status === 'awaiting_payment') {
+        order.status = 'approved';
+        const now = new Date();
+        order.statusHistory.push({ status: 'approved', label: 'Payment received - Approved', date: now });
+      }
+      // Set invoiceNumber if not already set
+      if (!order.invoiceNumber) {
+        order.invoiceNumber = await Order.generateInvoiceNumber();
+      }
       await order.save();
       console.log(`Order ${order.orderNumber} marked as paid via webhook`);
     }

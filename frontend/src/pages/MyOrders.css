@@ -125,7 +125,7 @@
 
 .order-item-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 1rem;
   font-size: 0.9rem;
 }
@@ -140,6 +140,20 @@
 
 .order-item-row span:last-child {
   color: var(--text-muted);
+}
+
+.btn-xs.rate-btn {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-hover);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-xs.rate-btn:hover {
+  background: var(--border);
 }
 
 .order-total-row {
@@ -614,4 +628,39 @@
   padding: 0.35rem 0;
   font-size: 0.9rem;
   color: var(--text-muted);
+}
+
+/* Review form inside modal */
+.review-form {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.review-product-name {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.star-rating {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.star-btn {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: #d1d5db;
+}
+
+.star-btn.filled {
+  color: #f59e0b;
+}
+
+.form-error {
+  color: #ef4444;
+  font-size: 0.85rem;
 }

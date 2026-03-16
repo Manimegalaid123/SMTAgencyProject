@@ -64,8 +64,13 @@ router.get('/:id', auth, async (req, res) => {
 router.post('/', auth, adminOnly, async (req, res) => {
   try {
     const productData = { ...req.body };
-    const qty = Number(productData.availableQuantity) || 0;
-    productData.status = qty > 0 ? 'Available' : 'Out of Stock';
+    if (!productData.imageUrl && Array.isArray(productData.images) && productData.images.length > 0) {
+      productData.imageUrl = productData.images[0];
+    }
+    // Stock is managed via Imports/StockBatch; new products start with 0 stock
+    const qty = 0;
+    productData.availableQuantity = 0;
+    productData.status = 'Out of Stock';
     const product = await Product.create(productData);
     await Stock.create({ product: product._id, quantity: qty });
     const populated = await Product.findById(product._id);
@@ -86,20 +91,15 @@ router.post('/', auth, adminOnly, async (req, res) => {
 router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     const productData = { ...req.body };
+    if (!productData.imageUrl && Array.isArray(productData.images) && productData.images.length > 0) {
+      productData.imageUrl = productData.images[0];
+    }
+    // Prevent manual stock changes from product form; stock comes from Imports
     if (productData.availableQuantity !== undefined) {
-      const qty = Number(productData.availableQuantity) || 0;
-      productData.status = qty > 0 ? 'Available' : 'Out of Stock';
+      delete productData.availableQuantity;
     }
     const product = await Product.findByIdAndUpdate(req.params.id, productData, { new: true });
     if (!product) return res.status(404).json({ error: 'Product not found' });
-
-    if (productData.availableQuantity !== undefined) {
-      const qty = Number(productData.availableQuantity) || 0;
-      await Stock.findOneAndUpdate(
-        { product: product._id },
-        { quantity: qty, lastUpdated: new Date() }
-      );
-    }
 
     const stock = await Stock.findOne({ product: product._id });
     const finalQty = stock?.quantity ?? Number(product.availableQuantity) ?? 0;
