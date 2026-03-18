@@ -90,7 +90,9 @@ export default function AgencyProducts() {
     deliveryType: 'home_delivery',
     address: '',
     notes: '',
-    paymentMethod: 'cod' // 'cod' or 'stripe'
+    paymentMethod: 'cod', // 'cod' or 'stripe'
+    deliveryLat: null,
+    deliveryLon: null
   });
   const [submitting, setSubmitting] = useState(false);
   const [deliveryCalc, setDeliveryCalc] = useState(null);
@@ -103,7 +105,6 @@ export default function AgencyProducts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState('popular');
   const [hoverZoom, setHoverZoom] = useState({ productId: null, x: 50, y: 50, active: false });
-  const [overlayZoom, setOverlayZoom] = useState({ x: 50, y: 50, active: false });
 
   const formatDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
@@ -126,13 +127,19 @@ export default function AgencyProducts() {
       setCalcLoading(true);
       api.post('/orders/calculate-delivery', {
         items: cartItems.map(item => ({ productId: item.productId, quantity: item.quantity })),
-        deliveryType: checkoutForm.deliveryType
+        deliveryType: checkoutForm.deliveryType,
+        deliveryLocation:
+          checkoutForm.deliveryType === 'home_delivery' &&
+          checkoutForm.deliveryLat != null &&
+          checkoutForm.deliveryLon != null
+            ? { lat: checkoutForm.deliveryLat, lon: checkoutForm.deliveryLon }
+            : undefined
       })
         .then(({ data }) => setDeliveryCalc(data))
         .catch(() => setDeliveryCalc(null))
         .finally(() => setCalcLoading(false));
     }
-  }, [checkoutOpen, checkoutForm.deliveryType, cartItems]);
+  }, [checkoutOpen, checkoutForm.deliveryType, checkoutForm.deliveryLat, checkoutForm.deliveryLon, cartItems]);
 
   const qty = (p) => p.stock ?? p.availableQuantity ?? 0;
   const availabilityStatus = (p) => p.availabilityStatus ?? p.status ?? (qty(p) > 0 ? 'Available' : 'Out of Stock');
@@ -181,13 +188,19 @@ export default function AgencyProducts() {
         notes: checkoutForm.notes || undefined,
         deliveryType: checkoutForm.deliveryType,
         deliveryAddress: checkoutForm.deliveryType === 'home_delivery' ? checkoutForm.address : undefined,
-           paymentMethod: checkoutForm.paymentMethod || 'cod', // 'cod' or 'stripe'
+        paymentMethod: checkoutForm.paymentMethod || 'cod', // 'cod' or 'stripe'
+        deliveryLocation:
+          checkoutForm.deliveryType === 'home_delivery' &&
+          checkoutForm.deliveryLat != null &&
+          checkoutForm.deliveryLon != null
+            ? { lat: checkoutForm.deliveryLat, lon: checkoutForm.deliveryLon }
+            : undefined,
       };
       const { data: order } = await api.post('/orders', orderData);
       clearCart();
       setCheckoutOpen(false);
       setCartOpen(false);
-      setCheckoutForm({ deliveryType: 'home_delivery', address: '', notes: '' });
+      setCheckoutForm({ deliveryType: 'home_delivery', address: '', notes: '', paymentMethod: 'cod', deliveryLat: null, deliveryLon: null });
       setDeliveryCalc(null);
       alert('Order placed successfully! The admin will review your order.');
       navigate('/my-orders');
@@ -204,13 +217,9 @@ export default function AgencyProducts() {
     try {
       setLocationSearching(true);
       setLocationResults([]);
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&addressdetails=1&limit=5`;
-      const res = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-        },
+      const { data } = await api.get('/location/search', {
+        params: { q: query },
       });
-      const data = await res.json();
       setLocationResults(Array.isArray(data) ? data : []);
     } catch (err) {
       alert('Unable to search location. Please try again.');
@@ -228,17 +237,6 @@ export default function AgencyProducts() {
 
   const handleImageMouseLeave = () => {
     setHoverZoom(prev => ({ ...prev, active: false }));
-  };
-
-  const handleOverlayMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setOverlayZoom({ x, y, active: true });
-  };
-
-  const handleOverlayMouseLeave = () => {
-    setOverlayZoom(prev => ({ ...prev, active: false }));
   };
 
   const filteredProducts = React.useMemo(() => {
@@ -611,7 +609,12 @@ export default function AgencyProducts() {
                           const data = await res.json();
                           const formatted = data.display_name;
                           if (formatted) {
-                            setCheckoutForm((prev) => ({ ...prev, address: formatted }));
+                            setCheckoutForm((prev) => ({
+                              ...prev,
+                              address: formatted,
+                              deliveryLat: latitude,
+                              deliveryLon: longitude
+                            }));
                           } else {
                             alert('Could not detect address from your location.');
                           }
@@ -654,7 +657,12 @@ export default function AgencyProducts() {
                           onClick={() => {
                             const addr = r.display_name;
                             if (addr) {
-                              setCheckoutForm((prev) => ({ ...prev, address: addr }));
+                              setCheckoutForm((prev) => ({
+                                ...prev,
+                                address: addr,
+                                deliveryLat: parseFloat(r.lat),
+                                deliveryLon: parseFloat(r.lon)
+                              }));
                             }
                             setLocationResults([]);
                           }}
@@ -757,16 +765,6 @@ export default function AgencyProducts() {
                 src={zoomProduct.imageUrl || (Array.isArray(zoomProduct.images) && zoomProduct.images[0])}
                 alt={zoomProduct.name}
                 className="image-zoom-img"
-                onMouseMove={handleOverlayMouseMove}
-                onMouseLeave={handleOverlayMouseLeave}
-                style={
-                  overlayZoom.active
-                    ? {
-                        transformOrigin: `${overlayZoom.x}% ${overlayZoom.y}%`,
-                        transform: 'scale(2.4)'
-                      }
-                    : undefined
-                }
               />
             </div>
             <div className="image-zoom-info">

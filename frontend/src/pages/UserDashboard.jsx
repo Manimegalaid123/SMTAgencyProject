@@ -7,13 +7,20 @@ import './Dashboard.css';
 export default function UserDashboard() {
   const [requests, setRequests] = useState([]);
   const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([api.get('/requests'), api.get('/products')])
-      .then(([r, p]) => {
-        setRequests(r.data.slice(0, 5));
+    Promise.all([
+      api.get('/requests'),
+      api.get('/products'),
+      api.get('/orders'),
+    ])
+      .then(([r, p, o]) => {
+        // Use all requests so dashboard counts match the Requests page
+        setRequests(Array.isArray(r.data) ? r.data : []);
         setProducts(Array.isArray(p.data) ? p.data : (p.data.products || []));
+        setOrders(Array.isArray(o.data) ? o.data : []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -22,9 +29,19 @@ export default function UserDashboard() {
   if (loading) return <div className="page-loading">Loading...</div>;
 
   const pending = requests.filter((r) => r.status === 'pending').length;
+  const totalOrders = orders.length;
+  const completedOrders = orders.filter((o) => o.status === 'delivered' || o.status === 'collected').length;
+  const pendingApprovalOrders = orders.filter((o) => o.status === 'pending').length;
+  const paymentPendingOrders = orders.filter(
+    (o) => o.paymentStatus !== 'paid' && ['approved', 'ready_for_pickup', 'out_for_delivery'].includes(o.status)
+  ).length;
 
   const cards = [
     { title: 'Available Products', value: products.length, color: 'green', icon: IconBox },
+    { title: 'Total Orders', value: totalOrders, color: 'blue', icon: IconShoppingCart },
+    { title: 'Pending Approval', value: pendingApprovalOrders, color: 'amber', icon: IconInbox },
+    { title: 'Payment Pending', value: paymentPendingOrders, color: 'amber', icon: IconTarget },
+    { title: 'Completed Orders', value: completedOrders, color: 'emerald', icon: IconShoppingCart },
     { title: 'Pending Requests', value: pending, color: 'amber', icon: IconInbox },
     { title: 'Total Requests', value: requests.length, color: 'blue', icon: IconTarget },
   ];

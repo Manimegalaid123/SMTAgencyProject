@@ -8,7 +8,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smt_ag
 
 // Fixed SMT Admin credentials (single admin account, not created via signup)
 const SMT_ADMIN_EMAIL = 'adminsmt@gmail.com';
-const SMT_ADMIN_PASSWORD = 'adminsmt@123';
+const SMT_ADMIN_PASSWORD = 'changeme';
 
 async function seed() {
   await mongoose.connect(MONGODB_URI);

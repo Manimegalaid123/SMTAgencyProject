@@ -21,6 +21,7 @@ import Analytics from './pages/Analytics';
 import Upload from './pages/Upload';
 import MLPredict from './pages/MLPredict';
 import Reviews from './pages/Reviews';
+import Agencies from './pages/Agencies';
 
 function NavigateToRole() {
   const { user } = useAuth();
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="agency-products" element={<PrivateRoute agencyOnly><AgencyProducts /></PrivateRoute>} />
         <Route path="agency-products/:id" element={<PrivateRoute agencyOnly><ProductDetail /></PrivateRoute>} />
         <Route path="products" element={<PrivateRoute adminOnly><Products /></PrivateRoute>} />
+        <Route path="agencies" element={<PrivateRoute adminOnly><Agencies /></PrivateRoute>} />
         <Route path="imports" element={<PrivateRoute adminOnly><Imports /></PrivateRoute>} />
         <Route path="exports" element={<PrivateRoute adminOnly><Exports /></PrivateRoute>} />
         <Route path="stock" element={<PrivateRoute adminOnly><Stock /></PrivateRoute>} />

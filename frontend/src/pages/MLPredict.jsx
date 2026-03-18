@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import './Dashboard.css';
 import './MLPredict.css';
 
 const tooltipStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 };
@@ -42,6 +43,9 @@ export default function MLPredict() {
   })();
 
   const productPredictions = prediction?.productPredictions || [];
+  const sortedProducts = [...productPredictions].sort(
+    (a, b) => (b.suggestedImportUnits || 0) - (a.suggestedImportUnits || 0)
+  );
 
   return (
     <div className="ml-page">
@@ -54,7 +58,10 @@ export default function MLPredict() {
 
       <section className="prediction-cards-section">
         <div className="prediction-card">
-          <h2>Next Month: {nextMonth}</h2>
+          <div className="prediction-meta">
+            <h2>Next Month: {nextMonth}</h2>
+            <span className="prediction-chip">ML Forecast</span>
+          </div>
           <div className="prediction-row">
             <div className="prediction-item">
               <span className="prediction-label">Sales (Quantity)</span>
@@ -65,22 +72,54 @@ export default function MLPredict() {
               <span className="prediction-value revenue">{formatINR(prediction?.predictionRevenue)}</span>
             </div>
           </div>
-          {prediction?.message && <p className="prediction-message">{prediction.message}</p>}
-          <button type="button" className="btn-primary" onClick={fetchPrediction}>Refresh Prediction</button>
+          <div className="prediction-footer">
+            {prediction?.message && <p className="prediction-message">{prediction.message}</p>}
+            <button type="button" className="btn-primary" onClick={fetchPrediction}>Refresh Prediction</button>
+          </div>
         </div>
       </section>
 
-      {productPredictions.length > 0 && (
+      {sortedProducts.length > 0 && (
         <section className="product-predictions-section">
-          <h2 className="section-title">Product-wise Next Month Prediction</h2>
-          <div className="product-predictions-grid">
-            {productPredictions.map((pp) => (
-              <div key={pp.productName} className="product-prediction-card">
-                <span className="product-pred-name">{pp.productName}</span>
-                <span className="product-pred-qty">{pp.prediction ?? 0} units</span>
-                <span className="product-pred-revenue">{formatINR(pp.revenue)}</span>
-              </div>
-            ))}
+          <h2 className="section-title">Next Month Import Plan (Product-wise)</h2>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Last month</th>
+                  <th>This month</th>
+                  <th>Forecast next month (ML)</th>
+                  <th>Current stock</th>
+                  <th>Recommended import</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedProducts.map((pp) => {
+                  const last = Math.round(pp.lastMonthQty || 0);
+                  const current = Math.round(pp.thisMonthQty || 0);
+                  const next = Math.round(pp.prediction || 0);
+                  const suggest = Math.round(pp.suggestedImportUnits || 0);
+                  const stock = Math.round(pp.currentStock || 0);
+
+                  let priorityClass = '';
+                  if (suggest >= 300) priorityClass = 'high';
+                  else if (suggest >= 50) priorityClass = 'medium';
+                  else if (suggest > 0) priorityClass = 'low';
+
+                  return (
+                    <tr key={pp.productName} className={priorityClass ? `import-priority-${priorityClass}` : ''}>
+                      <td>{pp.productName}</td>
+                      <td>{last}</td>
+                      <td>{current}</td>
+                      <td>{next}</td>
+                      <td>{stock}</td>
+                      <td>{suggest}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </section>
       )}

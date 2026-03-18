@@ -16,6 +16,7 @@ const uploadRoutes = require('./routes/upload');
 const mlRoutes = require('./routes/ml');
 const paymentRoutes = require('./routes/payments');
 const reviewRoutes = require('./routes/reviews');
+const locationRoutes = require('./routes/location');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -57,6 +58,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/ml', mlRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/location', locationRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

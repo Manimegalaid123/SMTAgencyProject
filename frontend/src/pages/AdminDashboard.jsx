@@ -68,6 +68,7 @@ export default function AdminDashboard() {
     { title: 'Total Transactions', value: summary?.totalTransactions ?? 0, to: '/exports', color: 'blue', icon: IconChart, trend: getTrendIndicator(1) },
     { title: 'Total Revenue', value: formatINR(summary?.totalRevenue), to: '/analytics', color: 'emerald', icon: IconTrending, trend: getTrendIndicator(1) },
     { title: 'This Month Sales', value: summary?.thisMonthSales ?? 0, to: '/analytics', color: 'amber', icon: IconBarChart, trend: getTrendIndicator(0) },
+    { title: 'Total Agencies', value: summary?.totalAgencies ?? 0, to: '/analytics', color: 'purple', icon: IconTarget, trend: getTrendIndicator(0) },
   ];
 
   const actions = [

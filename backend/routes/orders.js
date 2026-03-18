@@ -43,11 +43,36 @@ const DELIVERY_CONFIG = {
     upTo50: 30,            // +₹30 for 25-50 kg
     upTo100: 60,           // +₹60 for 50-100 kg
     above100: 100          // +₹100 for above 100 kg
+  },
+  distance: {
+    ratePerKm: Number(process.env.DELIVERY_RATE_PER_KM || 8), // ₹ per km
+    minCharge: Number(process.env.DELIVERY_MIN_CHARGE || 30),  // minimum charge
+    maxCharge: Number(process.env.DELIVERY_MAX_CHARGE || 200), // optional cap
   }
 };
 
+// Store location (can be overridden via environment variables)
+const STORE_LOCATION = {
+  lat: Number(process.env.STORE_LAT || 11.3410),
+  lon: Number(process.env.STORE_LON || 77.7172)
+};
+
+// Haversine distance in km between two lat/lon pairs
+const haversineKm = (lat1, lon1, lat2, lon2) => {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371; // Earth radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
 // Calculate delivery charge based on subtotal and weight
-const calculateDeliveryCharge = (subtotal, totalWeight, deliveryType) => {
+const calculateDeliveryCharge = (subtotal, totalWeight, deliveryType, distanceKm) => {
   // Store pickup = no delivery charge
   if (deliveryType === 'store_pickup') {
     return { deliveryCharge: 0, breakdown: { type: 'Store Pickup', message: 'No delivery charge' } };
@@ -64,7 +89,46 @@ const calculateDeliveryCharge = (subtotal, totalWeight, deliveryType) => {
     };
   }
   
-  // Calculate base + weight surcharge
+  const hasDistance = typeof distanceKm === 'number' && Number.isFinite(distanceKm);
+
+  if (hasDistance) {
+    const ratePerKm = DELIVERY_CONFIG.distance?.ratePerKm || 8;
+    const minCharge = DELIVERY_CONFIG.distance?.minCharge || 0;
+    const maxCharge = DELIVERY_CONFIG.distance?.maxCharge || Infinity;
+
+    const billedKm = Math.ceil(distanceKm); // round up to whole km
+    let distanceCharge = billedKm * ratePerKm;
+    if (minCharge > 0) distanceCharge = Math.max(distanceCharge, minCharge);
+    if (Number.isFinite(maxCharge)) distanceCharge = Math.min(distanceCharge, maxCharge);
+
+    // Optional small extra for very heavy loads
+    let weightExtra = 0;
+    if (totalWeight > 50 && totalWeight <= 100) {
+      weightExtra = 30;
+    } else if (totalWeight > 100) {
+      weightExtra = 60;
+    }
+
+    const deliveryCharge = distanceCharge + weightExtra;
+
+    return {
+      deliveryCharge,
+      breakdown: {
+        type: 'Home Delivery - Distance',
+        distanceKm: distanceKm.toFixed(1),
+        billedKm,
+        ratePerKm,
+        distanceCharge,
+        weightExtra,
+        totalWeight: totalWeight.toFixed(2),
+        message:
+          `Distance: ₹${ratePerKm}/km × ${billedKm} km = ₹${distanceCharge}` +
+          (weightExtra ? ` + ₹${weightExtra} heavy-load` : '')
+      }
+    };
+  }
+
+  // Fallback: original base + weight surcharge when distance is not available
   let baseCharge = DELIVERY_CONFIG.baseCharge;
   let weightSurcharge = 0;
   let weightCategory = '';
@@ -152,7 +216,7 @@ router.get('/:id', auth, async (req, res) => {
 // Create order (Agency/Shop Owner)
 router.post('/', auth, async (req, res) => {
   try {
-    const { items, deliveryAddress, notes, deliveryType = 'home_delivery', paymentMethod = 'cod' } = req.body;
+    const { items, deliveryAddress, notes, deliveryType = 'home_delivery', paymentMethod = 'cod', deliveryLocation } = req.body;
     
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'Order must have at least one item' });
@@ -221,8 +285,18 @@ router.post('/', auth, async (req, res) => {
       });
     }
     
+    // Calculate distance if location is provided for home delivery
+    let distanceKm = null;
+    if (deliveryType === 'home_delivery' && deliveryLocation && deliveryLocation.lat != null && deliveryLocation.lon != null) {
+      const lat = Number(deliveryLocation.lat);
+      const lon = Number(deliveryLocation.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        distanceKm = haversineKm(STORE_LOCATION.lat, STORE_LOCATION.lon, lat, lon);
+      }
+    }
+
     // Calculate delivery charge
-    const { deliveryCharge, breakdown } = calculateDeliveryCharge(subtotal + totalTax, totalWeight, deliveryType);
+    const { deliveryCharge, breakdown } = calculateDeliveryCharge(subtotal + totalTax, totalWeight, deliveryType, distanceKm);
     const totalAmount = subtotal + totalTax + deliveryCharge;
     
     const orderNumber = await Order.generateOrderNumber();
@@ -509,7 +583,7 @@ router.patch('/:id/collect', auth, adminOnly, async (req, res) => {
 // Calculate delivery charge (for frontend preview)
 router.post('/calculate-delivery', auth, async (req, res) => {
   try {
-    const { items, deliveryType = 'home_delivery' } = req.body;
+    const { items, deliveryType = 'home_delivery', deliveryLocation } = req.body;
     
     if (!items || items.length === 0) {
       return res.json({ subtotal: 0, deliveryCharge: 0, totalWeight: 0, totalAmount: 0 });
@@ -521,12 +595,30 @@ router.post('/calculate-delivery', auth, async (req, res) => {
     for (const item of items) {
       const product = await Product.findById(item.productId);
       if (product) {
-        subtotal += product.price * item.quantity;
+        const lineSubtotal = product.price * item.quantity;
+        subtotal += lineSubtotal;
+
+        // include GST in preview subtotal, like in order creation
+        const gstRate = typeof product.gstRate === 'number' ? product.gstRate : 0;
+        const taxableValue = lineSubtotal;
+        const gstAmount = Number(((taxableValue * gstRate) / 100).toFixed(2));
+        subtotal += gstAmount;
+
         totalWeight += (product.weight || 1) * item.quantity;
       }
     }
     
-    const { deliveryCharge, breakdown } = calculateDeliveryCharge(subtotal, totalWeight, deliveryType);
+    // Calculate distance if we have a delivery location
+    let distanceKm = null;
+    if (deliveryType === 'home_delivery' && deliveryLocation && deliveryLocation.lat != null && deliveryLocation.lon != null) {
+      const lat = Number(deliveryLocation.lat);
+      const lon = Number(deliveryLocation.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        distanceKm = haversineKm(STORE_LOCATION.lat, STORE_LOCATION.lon, lat, lon);
+      }
+    }
+
+    const { deliveryCharge, breakdown } = calculateDeliveryCharge(subtotal, totalWeight, deliveryType, distanceKm);
     
     res.json({
       subtotal,

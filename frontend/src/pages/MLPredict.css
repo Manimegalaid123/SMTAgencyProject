@@ -1,70 +1,70 @@
 .ml-page {
-  max-width: 900px;
-}
-
-.ml-error {
-  padding: 1rem;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid var(--danger);
-  border-radius: 8px;
-  color: var(--danger);
-  margin-bottom: 1.5rem;
-  font-weight: 500;
+  max-width: 1100px;
+  margin: 0 auto 2.5rem;
 }
 
 .prediction-cards-section {
-  margin-bottom: 2rem;
+  margin: 1.5rem 0 2rem;
 }
 
 .prediction-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 2rem;
-  margin-bottom: 0;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.prediction-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="dark"] .prediction-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
 }
 
 .prediction-card h2 {
-  font-size: 1.1rem;
-  color: var(--text-muted);
-  margin-bottom: 1rem;
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.prediction-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.prediction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .prediction-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-  margin-bottom: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
 }
 
 .prediction-item {
-  padding: 1rem;
-  background: var(--bg);
-  border-radius: 8px;
-  border: 1px solid var(--border);
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: var(--surface-hover);
 }
 
 .prediction-label {
   display: block;
   font-size: 0.8rem;
-  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: 0.35rem;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
 }
 
 .prediction-value {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 700;
   font-family: var(--font-mono);
 }
@@ -77,65 +77,48 @@
   color: #3b82f6;
 }
 
+.prediction-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .prediction-message {
   font-size: 0.85rem;
   color: var(--text-muted);
-  margin-bottom: 1rem;
-}
-
-.section-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 .product-predictions-section {
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
 }
 
-.product-predictions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.product-prediction-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  transition: border-color 0.2s, transform 0.15s;
-}
-
-.product-prediction-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-}
-
-.product-pred-name {
-  display: block;
-  font-weight: 600;
-  font-size: 0.95rem;
-  margin-bottom: 0.5rem;
-}
-
-.product-pred-qty {
-  display: block;
+.section-title {
   font-size: 0.9rem;
-  color: var(--accent);
-  font-weight: 500;
-  margin-bottom: 0.25rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
-.product-pred-revenue {
-  display: block;
-  font-size: 1rem;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  color: #3b82f6;
+/* Row highlighting based on recommended import size */
+.import-priority-high td {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.import-priority-medium td {
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.import-priority-low td {
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.product-predictions-section .data-table th:nth-child(6),
+.product-predictions-section .data-table td:nth-child(6) {
+  font-weight: 600;
 }
 
 .ml-page .chart-section {
@@ -143,10 +126,17 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .ml-page .chart-section h2 {
   font-size: 1rem;
   margin-bottom: 1rem;
+  color: var(--text-muted);
+}
+
+.empty-state {
+  margin-top: 1rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
 }

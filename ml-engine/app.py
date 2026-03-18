@@ -72,12 +72,29 @@ def predict_full():
         overall_data = body.get('overall', body.get('data', []))
         products_data = body.get('products', [])
         result = {'prediction': 0, 'productPredictions': []}
+
+        # First, predict overall and derive a growth factor from last month.
+        overall_growth = 1.0
         if overall_data and len(overall_data) >= 2:
-            result['prediction'] = _predict_series(overall_data)
+            overall_pred = _predict_series(overall_data)
+            result['prediction'] = overall_pred
+            last_overall_qty = float(overall_data[-1].get('quantity', 0) or 0)
+            if last_overall_qty > 0:
+                raw_growth = overall_pred / last_overall_qty
+                # Clamp growth to avoid extreme jumps when data is noisy
+                overall_growth = max(0.7, min(1.3, raw_growth))
         for p in products_data:
             name = p.get('productName', p.get('name', 'Unknown'))
             data_list = p.get('data', [])
-            pred = _predict_series(data_list) if data_list and len(data_list) >= 2 else 0
+            pred = 0.0
+            if data_list and len(data_list) >= 2:
+                # Enough history for per-product regression
+                pred = _predict_series(data_list)
+            elif data_list and len(data_list) == 1:
+                # Only one month of history: use overall ML growth factor on last quantity
+                last_qty = float(data_list[0].get('quantity', 0) or 0)
+                pred_raw = last_qty * overall_growth
+                pred = max(0.0, round(float(pred_raw), 2))
             result['productPredictions'].append({'productName': name, 'prediction': pred})
         result['message'] = 'Next month sales prediction (Linear Regression)'
         return jsonify(result)

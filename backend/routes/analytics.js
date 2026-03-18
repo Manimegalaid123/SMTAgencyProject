@@ -2,6 +2,8 @@ const express = require('express');
 const Export = require('../models/Export');
 const Import = require('../models/Import');
 const Product = require('../models/Product');
+const Order = require('../models/Order');
+const User = require('../models/User');
 const { auth, adminOnly } = require('../middleware/auth');
 
 const router = express.Router();
@@ -116,13 +118,13 @@ router.get('/summary', auth, adminOnly, async (req, res) => {
       }
     });
     
-    // Calculate growth percentages
+    // Calculate growth percentages (both based on revenue for consistency)
     const revenueGrowth = lastMonthRevenue > 0 
       ? (((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100).toFixed(1)
       : thisMonthRevenue > 0 ? 100 : 0;
-    const salesGrowth = lastMonthSales > 0
-      ? (((thisMonthSales - lastMonthSales) / lastMonthSales) * 100).toFixed(1)
-      : thisMonthSales > 0 ? 100 : 0;
+
+    // Sales growth now mirrors revenue growth, so high revenue always shows high growth
+    const salesGrowth = revenueGrowth;
     
     // Daily averages (days passed this month)
     const daysPassed = now.getDate();
@@ -131,6 +133,33 @@ router.get('/summary', auth, adminOnly, async (req, res) => {
     
     const productCount = await Product.countDocuments();
     const exportCount = await Export.countDocuments();
+
+    // Total agencies (customers)
+    const totalAgencies = await User.countDocuments({ role: 'agency' });
+
+    // Top agencies/customers by revenue (using Export data)
+    const topAgencies = await Export.aggregate([
+      {
+        $lookup: {
+          from: 'products',
+          localField: 'product',
+          foreignField: '_id',
+          as: 'productInfo'
+        }
+      },
+      { $unwind: '$productInfo' },
+      {
+        $group: {
+          _id: '$agency',
+          agencyName: { $first: '$agencyName' },
+          totalQuantity: { $sum: '$quantity' },
+          totalRevenue: { $sum: { $multiply: ['$quantity', '$productInfo.price'] } },
+          orderCount: { $sum: 1 }
+        }
+      },
+      { $sort: { totalRevenue: -1 } },
+      { $limit: 5 }
+    ]);
     
     res.json({
       totalProducts: productCount,
@@ -144,6 +173,8 @@ router.get('/summary', auth, adminOnly, async (req, res) => {
       salesGrowth: parseFloat(salesGrowth),
       dailyAvgRevenue,
       dailyAvgSales,
+      totalAgencies,
+      topAgencies,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -271,6 +302,72 @@ router.get('/agency-wise', auth, adminOnly, async (req, res) => {
     ]);
     
     res.json(agencyStats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Agencies overview: list all agencies with aggregated order stats
+router.get('/agencies-overview', auth, adminOnly, async (req, res) => {
+  try {
+    const agencies = await User.find({ role: 'agency' })
+      .select('name email agencyName createdAt')
+      .lean();
+
+    const orderStats = await Order.aggregate([
+      {
+        $group: {
+          _id: '$user',
+          totalOrders: { $sum: 1 },
+          totalAmount: { $sum: '$totalAmount' },
+          lastOrderAt: { $max: '$createdAt' },
+          lastDeliveryAddress: { $last: '$deliveryAddress' },
+        },
+      },
+    ]);
+
+    const statsMap = new Map();
+    orderStats.forEach((s) => {
+      statsMap.set(String(s._id), s);
+    });
+
+    const now = new Date();
+    const result = agencies.map((u) => {
+      const stat = statsMap.get(String(u._id)) || {};
+      const totalOrders = stat.totalOrders || 0;
+      const totalAmount = stat.totalAmount || 0;
+      const lastOrderAt = stat.lastOrderAt || null;
+      const address = stat.lastDeliveryAddress || '';
+      const area = address ? address.split(',')[0].trim() : '';
+
+      let status = 'new';
+      if (totalOrders === 0) {
+        status = 'new';
+      } else if (lastOrderAt) {
+        const diffDays = Math.floor((now - new Date(lastOrderAt)) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 30) status = 'active';
+        else if (diffDays <= 90) status = 'warm';
+        else status = 'inactive';
+      }
+
+      return {
+        id: u._id,
+        name: u.name,
+        agencyName: u.agencyName,
+        email: u.email,
+        joinedAt: u.createdAt,
+        totalOrders,
+        totalAmount,
+        lastOrderAt,
+        area,
+        status,
+      };
+    });
+
+    // Sort by totalAmount descending by default
+    result.sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
+
+    res.json({ agencies: result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

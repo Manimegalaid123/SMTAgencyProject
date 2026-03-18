@@ -245,8 +245,8 @@ export default function Analytics() {
       value: formatINR(summary?.thisMonthRevenue), 
       icon: <IconTrending />,
       color: 'success',
-      subtitle: summary?.revenueGrowth > 0 ? `+${summary?.revenueGrowth}%` : `${summary?.revenueGrowth}%`,
-      trend: summary?.revenueGrowth > 0 ? 'up' : 'down'
+      // Show only label, hide the numeric % change on the card
+      subtitle: 'vs last month'
     },
     { 
       title: 'Last Month', 
