@@ -244,8 +244,8 @@ export default function Orders() {
 
   const getStatusBadge = (status) => {
     const statusMap = {
-      pending: { class: 'warning', label: 'Pending' },
-      approved: { class: 'info', label: 'Approved' },
+      pending: { class: 'warning', label: 'Placed' },
+      approved: { class: 'info', label: 'Confirmed' },
       rejected: { class: 'danger', label: 'Rejected' },
       ready_for_pickup: { class: 'info', label: 'Ready for Pickup' },
       out_for_delivery: { class: 'info', label: 'Out for Delivery' },
@@ -272,7 +272,7 @@ export default function Orders() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Orders Management</h1>
-          <p className="page-desc">View and manage customer orders. Approve to create exports automatically.</p>
+          <p className="page-desc">View and manage customer orders. Update delivery status and download invoices.</p>
         </div>
         <div className="filter-tabs">
           {['all', 'pending', 'approved', 'ready_for_pickup', 'out_for_delivery', 'delivered', 'collected', 'rejected'].map(f => (
@@ -364,17 +364,7 @@ export default function Orders() {
                   <IconEye /> View
                 </button>
                 
-                {order.status === 'pending' && (
-                  <>
-                    <button className="btn-sm success" onClick={() => handleApprove(order._id)}>
-                      <IconCheck /> Approve
-                    </button>
-                    <button className="btn-sm danger" onClick={() => setRejectModal(order)}>
-                      <IconX /> Reject
-                    </button>
-                  </>
-                )}
-                
+                {/* Manual approve/reject removed: orders are auto-confirmed on placement */}
 
                 {/* Home Delivery Actions */}
                 {order.deliveryType === 'home_delivery' &&
@@ -560,29 +550,7 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Reject Modal */}
-      {rejectModal && (
-        <div className="modal-overlay" onClick={() => setRejectModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>Reject Order</h2>
-            <p>Rejecting order <strong>{rejectModal.orderNumber}</strong> from {rejectModal.agencyName}</p>
-            <div className="form">
-              <label className="form-label">Reason for Rejection</label>
-              <textarea
-                className="input"
-                rows={3}
-                placeholder="Enter reason for rejection..."
-                value={rejectReason}
-                onChange={e => setRejectReason(e.target.value)}
-              />
-              <div className="form-actions">
-                <button className="btn-secondary" onClick={() => setRejectModal(null)}>Cancel</button>
-                <button className="btn-danger" onClick={handleReject}>Reject Order</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Reject Modal removed: orders are no longer manually rejected from this screen */}
 
       {/* Collect/Pickup Verification Modal */}
       {collectModal && (

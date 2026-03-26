@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { useToast } from '../context/ToastContext';
 import './Products.css';
 
 // Initialize Stripe with publishable key
@@ -82,13 +83,24 @@ export default function AgencyProducts() {
   const { user } = useAuth();
   const { cartItems, addToCart, updateQuantity, removeFromCart, clearCart, getCartTotal, getCartCount } = useCart();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState('new');
+  const [saveNewAddress, setSaveNewAddress] = useState(false);
+  const [newAddressLabel, setNewAddressLabel] = useState('');
+  const [locationError, setLocationError] = useState('');
   const [checkoutForm, setCheckoutForm] = useState({
     deliveryType: 'home_delivery',
-    address: '',
+    address: '', // full address string sent to backend
+    addressLine: '',
+    city: '',
+    district: '',
+    pincode: '',
     notes: '',
     paymentMethod: 'cod', // 'cod' or 'stripe'
     deliveryLat: null,
@@ -97,14 +109,11 @@ export default function AgencyProducts() {
   const [submitting, setSubmitting] = useState(false);
   const [deliveryCalc, setDeliveryCalc] = useState(null);
   const [calcLoading, setCalcLoading] = useState(false);
-  const [qtyInputs, setQtyInputs] = useState({});
-  const [locationQuery, setLocationQuery] = useState('');
-  const [locationResults, setLocationResults] = useState([]);
-  const [locationSearching, setLocationSearching] = useState(false);
   const [zoomProduct, setZoomProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState('popular');
   const [hoverZoom, setHoverZoom] = useState({ productId: null, x: 50, y: 50, active: false });
+  const { showError, showSuccess } = useToast();
 
   const formatDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
@@ -120,6 +129,49 @@ export default function AgencyProducts() {
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  // Load saved delivery addresses when checkout opens
+  useEffect(() => {
+    if (!checkoutOpen || !user) return;
+    api.get('/auth/addresses')
+      .then(({ data }) => {
+        const list = Array.isArray(data) ? data : [];
+        setSavedAddresses(list);
+        if (list.length > 0) {
+          setSelectedAddressId(list[0]._id);
+        } else {
+          setSelectedAddressId('new');
+        }
+      })
+      .catch(() => {
+        setSavedAddresses([]);
+        setSelectedAddressId('new');
+      });
+  }, [checkoutOpen, user]);
+
+  // If coming from a Buy Now action, open checkout directly
+  useEffect(() => {
+    const checkout = searchParams.get('checkout');
+    const addressIdFromQuery = searchParams.get('addressId');
+    if (addressIdFromQuery) {
+      setSelectedAddressId(addressIdFromQuery);
+    }
+    if (checkout === '1' && cartItems.length > 0) {
+      setCartOpen(false);
+      setCheckoutOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, cartItems.length]);
+
+  // Base cart total without GST (sum of product price × quantity)
+  const baseCartTotal = getCartTotal();
+
+  // When we have a delivery calculation from backend, its `subtotal` already
+  // includes item price + GST. Use the difference to show estimated GST
+  // clearly in the order summary so users understand the final amount.
+  const estimatedGst = deliveryCalc
+    ? Math.max(0, (deliveryCalc.subtotal || 0) - baseCartTotal)
+    : 0;
 
   // Calculate delivery charges when checkout opens or delivery type changes
   useEffect(() => {
@@ -161,70 +213,151 @@ export default function AgencyProducts() {
     const item = cartItems.find(i => i.productId === productId);
     return item ? item.quantity : 0;
   };
-
-  const getQtyInput = (productId) => qtyInputs[productId] ?? '';
   
-  const setQtyInput = (productId, value) => {
-    setQtyInputs(prev => ({ ...prev, [productId]: value }));
-  };
-
   const handleAddToCart = (product) => {
-    const quantity = parseInt(qtyInputs[product._id]) || 1;
-    if (quantity < 1) return;
-    addToCart(product, quantity);
-    setQtyInputs(prev => ({ ...prev, [product._id]: '' })); // Reset input after adding
+    // Simple, clean card UI: always add 1 unit from the list view.
+    // Users can adjust quantities inside the cart or product detail page.
+    addToCart(product, 1);
   };
 
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
     if (cartItems.length === 0) return;
+    setCheckoutError('');
+
+    // Build a clean Tamil Nadu delivery address when using home delivery
+    let finalAddress = checkoutForm.address?.trim();
+    let deliveryLat = checkoutForm.deliveryLat;
+    let deliveryLon = checkoutForm.deliveryLon;
+
+    if (checkoutForm.deliveryType === 'home_delivery') {
+      const usingSaved = savedAddresses.length > 0 && selectedAddressId !== 'new';
+
+      if (usingSaved) {
+        const chosen = savedAddresses.find(a => a._id === selectedAddressId);
+        if (!chosen) {
+          showError('Selected saved address not found. Please choose again.');
+          return;
+        }
+        finalAddress = (chosen.fullAddress || chosen.addressLine || '').trim();
+        deliveryLat = chosen.deliveryLat ?? deliveryLat;
+        deliveryLon = chosen.deliveryLon ?? deliveryLon;
+
+        if (!finalAddress) {
+          showError('Saved address is incomplete. Please edit or choose another address.');
+          return;
+        }
+        if (!chosen.district) {
+          showError('Saved address is missing district information. Please choose another address.');
+          return;
+        }
+        if (!chosen.pincode || String(chosen.pincode).length !== 6) {
+          showError('Saved address has an invalid pincode. Please choose another address.');
+          return;
+        }
+      } else {
+        const parts = [];
+        if (checkoutForm.addressLine) parts.push(checkoutForm.addressLine.trim());
+        if (checkoutForm.city) parts.push(checkoutForm.city.trim());
+        if (checkoutForm.district) parts.push(checkoutForm.district.trim());
+        if (checkoutForm.pincode) parts.push(checkoutForm.pincode.trim());
+        if (parts.length > 0) {
+          finalAddress = parts.join(', ') + ', Tamil Nadu, India';
+        }
+
+        // Frontend validation for Tamil Nadu delivery
+        if (!finalAddress) {
+          showError('Please enter your full delivery address inside Tamil Nadu.');
+          return;
+        }
+        if (!checkoutForm.district) {
+          showError('Please select your district in Tamil Nadu.');
+          return;
+        }
+        if (!checkoutForm.pincode || checkoutForm.pincode.length !== 6) {
+          showError('Please enter a valid 6-digit pincode.');
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
     try {
-      const orderData = {
+    // Optionally save new address for future use
+    if (
+      checkoutForm.deliveryType === 'home_delivery' &&
+      selectedAddressId === 'new' &&
+      saveNewAddress
+    ) {
+      try {
+        await api.post('/auth/addresses', {
+          label: newAddressLabel || 'Shop',
+          addressLine: checkoutForm.addressLine,
+          city: checkoutForm.city,
+          district: checkoutForm.district,
+          pincode: checkoutForm.pincode,
+          fullAddress: finalAddress,
+          deliveryLat: checkoutForm.deliveryLat,
+          deliveryLon: checkoutForm.deliveryLon,
+        }).then(({ data }) => {
+          if (Array.isArray(data)) {
+            setSavedAddresses(data);
+          }
+        });
+      } catch (err) {
+        // Do not block order placement if address save fails
+      }
+    }
+
+    const orderData = {
         items: cartItems.map(item => ({
           productId: item.productId,
           quantity: item.quantity
         })),
         notes: checkoutForm.notes || undefined,
         deliveryType: checkoutForm.deliveryType,
-        deliveryAddress: checkoutForm.deliveryType === 'home_delivery' ? checkoutForm.address : undefined,
+        deliveryAddress: checkoutForm.deliveryType === 'home_delivery' ? finalAddress : undefined,
         paymentMethod: checkoutForm.paymentMethod || 'cod', // 'cod' or 'stripe'
         deliveryLocation:
           checkoutForm.deliveryType === 'home_delivery' &&
-          checkoutForm.deliveryLat != null &&
-          checkoutForm.deliveryLon != null
-            ? { lat: checkoutForm.deliveryLat, lon: checkoutForm.deliveryLon }
+          deliveryLat != null &&
+          deliveryLon != null
+            ? { lat: deliveryLat, lon: deliveryLon }
             : undefined,
       };
       const { data: order } = await api.post('/orders', orderData);
       clearCart();
       setCheckoutOpen(false);
       setCartOpen(false);
-      setCheckoutForm({ deliveryType: 'home_delivery', address: '', notes: '', paymentMethod: 'cod', deliveryLat: null, deliveryLon: null });
+      setCheckoutForm({
+        deliveryType: 'home_delivery',
+        address: '',
+        addressLine: '',
+        city: '',
+        district: '',
+        pincode: '',
+        notes: '',
+        paymentMethod: 'cod',
+        deliveryLat: null,
+        deliveryLon: null
+      });
+      setSelectedAddressId('new');
+      setSaveNewAddress(false);
+      setNewAddressLabel('');
       setDeliveryCalc(null);
-      alert('Order placed successfully! The admin will review your order.');
-      navigate('/my-orders');
+      const method = checkoutForm.paymentMethod || 'cod';
+      if (method === 'stripe') {
+        showSuccess('Order created successfully. Please complete payment now.');
+        navigate(`/payment/${order._id}`);
+      } else {
+        showSuccess('Order placed successfully!');
+        navigate('/my-orders');
+      }
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to place order');
+      const message = err.response?.data?.error || 'Failed to place order. Please try again.';
+      setCheckoutError(message);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleSearchLocation = async () => {
-    const query = locationQuery.trim();
-    if (!query) return;
-    try {
-      setLocationSearching(true);
-      setLocationResults([]);
-      const { data } = await api.get('/location/search', {
-        params: { q: query },
-      });
-      setLocationResults(Array.isArray(data) ? data : []);
-    } catch (err) {
-      alert('Unable to search location. Please try again.');
-    } finally {
-      setLocationSearching(false);
     }
   };
 
@@ -320,28 +453,20 @@ export default function AgencyProducts() {
       <div className="products-grid">
         {filteredProducts.map((p) => {
           const mainImage = p.imageUrl || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
+          const inCartQty = getCartItemQty(p._id);
           return (
-          <div key={p._id} className="product-card">
+          <div
+            key={p._id}
+            className="product-card"
+            onClick={() => navigate(`/agency-products/${p._id}`)}
+          >
             {mainImage && (
-              <div
-                className="product-image-wrap zoomable"
-                onClick={() => setZoomProduct(p)}
-                onMouseMove={(e) => handleImageMouseMove(e, p._id)}
-                onMouseLeave={handleImageMouseLeave}
-              >
+              <div className="product-image-wrap">
                 <img
                   src={mainImage}
                   alt={p.name}
                   className="product-image"
                   loading="lazy"
-                  style={
-                    hoverZoom.active && hoverZoom.productId === p._id
-                      ? {
-                          transformOrigin: `${hoverZoom.x}% ${hoverZoom.y}%`,
-                          transform: 'scale(1.5)'
-                        }
-                      : undefined
-                  }
                 />
               </div>
             )}
@@ -359,36 +484,31 @@ export default function AgencyProducts() {
                 {availabilityStatus(p)}
               </span>
             </div>
-            <div className="product-actions add-cart-row">
-              <input
-                type="number"
-                min="1"
-                value={getQtyInput(p._id)}
-                onChange={(e) => setQtyInput(p._id, e.target.value)}
-                className="qty-input-small"
-                disabled={!canOrder(p)}
-              />
-              <button
-                type="button"
-                className="btn-sm primary add-cart-btn"
-                onClick={() => handleAddToCart(p)}
-                disabled={!canOrder(p)}
-              >
-                <IconCart /> Add
-              </button>
-              <button
-                type="button"
-                className="btn-sm"
-                onClick={() => navigate(`/agency-products/${p._id}`)}
-              >
-                View details
-              </button>
+            <div className="product-card-footer">
+              {inCartQty > 0 ? (
+                <button
+                  type="button"
+                  className="product-card-cart-bar in-cart"
+                  onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
+                  disabled={!canOrder(p)}
+                >
+                  <span className="product-card-cart-left">
+                    <IconCart />
+                    <span>{inCartQty} in cart</span>
+                  </span>
+                  <span className="product-card-cart-plus">+</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="product-card-cart-bar"
+                  onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
+                  disabled={!canOrder(p)}
+                >
+                  Add to cart
+                </button>
+              )}
             </div>
-            {getCartItemQty(p._id) > 0 && (
-              <div className="in-cart-info">
-                {getCartItemQty(p._id)} in cart
-              </div>
-            )}
           </div>
         );
         })}
@@ -474,7 +594,16 @@ export default function AgencyProducts() {
 
       {/* Checkout Modal */}
       {checkoutOpen && (
-        <div className="modal-overlay" onClick={() => setCheckoutOpen(false)}>
+        <div className="modal-overlay" onClick={() => {
+          // If Pay Online is selected, show alert before closing
+          if (checkoutForm.paymentMethod === 'stripe') {
+            if (window.confirm('Your order will be confirmed and stock reserved only after payment. If you leave now, your order will not be placed and stock is not reserved. Are you sure you want to exit checkout?')) {
+              setCheckoutOpen(false);
+            }
+          } else {
+            setCheckoutOpen(false);
+          }
+        }}>
           <div className="modal checkout-modal" onClick={(e) => e.stopPropagation()}>
             <h2>Place Order</h2>
             
@@ -534,8 +663,16 @@ export default function AgencyProducts() {
                   <div className="calc-loading">Calculating delivery charges...</div>
                 ) : deliveryCalc && (
                   <>
+                    <div className="charge-row items-total">
+                      <span>Items total (before GST):</span>
+                      <span>₹{baseCartTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="charge-row gst">
+                      <span>GST on items (approx.):</span>
+                      <span>₹{estimatedGst.toLocaleString('en-IN')}</span>
+                    </div>
                     <div className="charge-row subtotal">
-                      <span>Subtotal:</span>
+                      <span>Subtotal (items + GST):</span>
                       <span>₹{deliveryCalc.subtotal?.toLocaleString('en-IN')}</span>
                     </div>
                     <div className="charge-row weight">
@@ -574,21 +711,160 @@ export default function AgencyProducts() {
             <form onSubmit={handlePlaceOrder} className="form">
               {checkoutForm.deliveryType === 'home_delivery' && (
                 <>
-                  <label className="form-label">Delivery Address *</label>
-                  <textarea
-                    placeholder="Enter your complete delivery address"
-                    value={checkoutForm.address}
-                    onChange={(e) => setCheckoutForm({ ...checkoutForm, address: e.target.value })}
-                    required
-                    className="input"
-                    rows={3}
-                  />
+                  <div className="tn-delivery-info" style={{marginBottom: '0.5rem', fontSize: 13, color: '#0f5132', background: '#d1e7dd', padding: '0.5rem 0.75rem', borderRadius: 8}}>
+                    Home delivery is available <strong>only within Tamil Nadu</strong>. Other states, please choose <strong>Store Pickup</strong>.
+                  </div>
+                  {savedAddresses.length > 0 && (
+                    <div className="saved-addresses-section">
+                      <div className="saved-addresses-header">
+                        <span>Saved delivery addresses</span>
+                      </div>
+                      <div className="saved-addresses-list">
+                        {savedAddresses.map((addr) => (
+                          <label
+                            key={addr._id}
+                            className={
+                              selectedAddressId === addr._id
+                                ? 'saved-address-card selected'
+                                : 'saved-address-card'
+                            }
+                          >
+                            <input
+                              type="radio"
+                              name="savedAddress"
+                              value={addr._id}
+                              checked={selectedAddressId === addr._id}
+                              onChange={() => setSelectedAddressId(addr._id)}
+                            />
+                            <div className="saved-address-main">
+                              <div className="saved-address-label-row">
+                                <span className="saved-address-label-text">{addr.label || 'Saved address'}</span>
+                              </div>
+                              <div className="saved-address-line">{addr.fullAddress || addr.addressLine}</div>
+                            </div>
+                          </label>
+                        ))}
+                        <label
+                          className={
+                            selectedAddressId === 'new'
+                              ? 'saved-address-card new selected'
+                              : 'saved-address-card new'
+                          }
+                        >
+                          <input
+                            type="radio"
+                            name="savedAddress"
+                            value="new"
+                            checked={selectedAddressId === 'new'}
+                            onChange={() => setSelectedAddressId('new')}
+                          />
+                          <div className="saved-address-main">
+                            <div className="saved-address-label-row">
+                              <span className="saved-address-label-text">Deliver to a new address</span>
+                            </div>
+                            <div className="saved-address-line">Enter a different delivery address below</div>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                  {(savedAddresses.length === 0 || selectedAddressId === 'new') && (
+                    <>
+                      <label className="form-label">Address line *</label>
+                      <input
+                        type="text"
+                        placeholder="Door no, street, area"
+                        value={checkoutForm.addressLine}
+                        onChange={(e) => setCheckoutForm({ ...checkoutForm, addressLine: e.target.value })}
+                        required
+                        className="input"
+                      />
+                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="form-label">City / Town *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Erode"
+                        value={checkoutForm.city}
+                        onChange={(e) => setCheckoutForm({ ...checkoutForm, city: e.target.value })}
+                        required
+                        className="input"
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label className="form-label">District (Tamil Nadu) *</label>
+                      <select
+                        value={checkoutForm.district}
+                        onChange={(e) => setCheckoutForm({ ...checkoutForm, district: e.target.value })}
+                        required
+                        className="input"
+                      >
+                        <option value="">Select district</option>
+                        <option value="Ariyalur">Ariyalur</option>
+                        <option value="Chengalpattu">Chengalpattu</option>
+                        <option value="Chennai">Chennai</option>
+                        <option value="Coimbatore">Coimbatore</option>
+                        <option value="Cuddalore">Cuddalore</option>
+                        <option value="Dharmapuri">Dharmapuri</option>
+                        <option value="Dindigul">Dindigul</option>
+                        <option value="Erode">Erode</option>
+                        <option value="Kallakurichi">Kallakurichi</option>
+                        <option value="Kanchipuram">Kanchipuram</option>
+                        <option value="Kanyakumari">Kanyakumari</option>
+                        <option value="Karur">Karur</option>
+                        <option value="Krishnagiri">Krishnagiri</option>
+                        <option value="Madurai">Madurai</option>
+                        <option value="Nagapattinam">Nagapattinam</option>
+                        <option value="Namakkal">Namakkal</option>
+                        <option value="Nilgiris">Nilgiris</option>
+                        <option value="Perambalur">Perambalur</option>
+                        <option value="Pudukkottai">Pudukkottai</option>
+                        <option value="Ramanathapuram">Ramanathapuram</option>
+                        <option value="Ranipet">Ranipet</option>
+                        <option value="Salem">Salem</option>
+                        <option value="Sivaganga">Sivaganga</option>
+                        <option value="Tenkasi">Tenkasi</option>
+                        <option value="Thanjavur">Thanjavur</option>
+                        <option value="Theni">Theni</option>
+                        <option value="Thiruvallur">Thiruvallur</option>
+                        <option value="Thiruvarur">Thiruvarur</option>
+                        <option value="Thoothukudi">Thoothukudi</option>
+                        <option value="Tiruchirappalli">Tiruchirappalli</option>
+                        <option value="Tirunelveli">Tirunelveli</option>
+                        <option value="Tirupattur">Tirupattur</option>
+                        <option value="Tiruppur">Tiruppur</option>
+                        <option value="Tiruvannamalai">Tiruvannamalai</option>
+                        <option value="Vellore">Vellore</option>
+                        <option value="Viluppuram">Viluppuram</option>
+                        <option value="Virudhunagar">Virudhunagar</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="form-label">Pincode *</label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="6-digit pincode"
+                        value={checkoutForm.pincode}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^0-9]/g, '');
+                          setCheckoutForm({ ...checkoutForm, pincode: value });
+                        }}
+                        required
+                        className="input"
+                      />
+                    </div>
+                    <div style={{ fontSize: 13, color: '#555' }}>Tamil Nadu, India</div>
+                  </div>
                   <button
                     type="button"
                     className="btn-secondary btn-use-location"
                     onClick={async () => {
+                      setLocationError('');
                       if (!navigator.geolocation) {
-                        alert('Location is not supported in this browser.');
+                        setLocationError('Location is not supported in this browser.');
                         return;
                       }
                       try {
@@ -600,6 +876,13 @@ export default function AgencyProducts() {
                           });
                         }).then(async (pos) => {
                           const { latitude, longitude } = pos.coords;
+                          // Always store coordinates for delivery distance, even if reverse lookup fails
+                          setCheckoutForm((prev) => ({
+                            ...prev,
+                            deliveryLat: latitude,
+                            deliveryLon: longitude
+                          }));
+
                           const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=jsonv2`;
                           const res = await fetch(url, {
                             headers: {
@@ -608,69 +891,69 @@ export default function AgencyProducts() {
                           });
                           const data = await res.json();
                           const formatted = data.display_name;
+                          const addr = data.address || {};
+                          const state = (addr.state || '').toLowerCase();
+
+                          // Restrict to Tamil Nadu only
+                          const isTN = state.includes('tamil nadu') || (formatted || '').toLowerCase().includes('tamil nadu');
+                          if (!isTN) {
+                            setLocationError('We currently deliver only within Tamil Nadu. Please choose a location inside Tamil Nadu.');
+                            return;
+                          }
+
                           if (formatted) {
                             setCheckoutForm((prev) => ({
                               ...prev,
                               address: formatted,
-                              deliveryLat: latitude,
-                              deliveryLon: longitude
+                              addressLine: formatted,
+                              city: addr.city || addr.town || addr.village || prev.city,
+                              district: addr.state_district || prev.district,
+                              pincode: addr.postcode || prev.pincode,
                             }));
                           } else {
-                            alert('Could not detect address from your location.');
+                            setLocationError('Could not detect full address from your location. Please fill it manually.');
                           }
                         });
                       } catch (err) {
-                        alert('Unable to fetch your location. Please enter address manually.');
+                        console.error('Geolocation error', err);
+                        if (err && err.code === 1) {
+                          setLocationError('Location permission was denied. Please allow location for this site or enter address manually.');
+                        } else {
+                          setLocationError('Unable to fetch your location. Please enter address manually.');
+                        }
                       }
                     }}
                     style={{ marginTop: '0.5rem' }}
                   >
                     Use my location
                   </button>
-                  <label className="form-label" style={{ marginTop: '0.75rem' }}>Search location (optional)</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <input
-                      type="text"
-                      placeholder="Type area or city name, e.g. Erode"
-                      value={locationQuery}
-                      onChange={(e) => setLocationQuery(e.target.value)}
-                      className="input"
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={handleSearchLocation}
-                      disabled={locationSearching}
-                    >
-                      {locationSearching ? 'Searching...' : 'Search'}
-                    </button>
-                  </div>
-                  {locationResults.length > 0 && (
-                    <div className="location-search-results" style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: '0.5rem' }}>
-                      {locationResults.map((r) => (
-                        <button
-                          key={r.place_id}
-                          type="button"
-                          className="btn-secondary"
-                          style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: '0.25rem', whiteSpace: 'normal' }}
-                          onClick={() => {
-                            const addr = r.display_name;
-                            if (addr) {
-                              setCheckoutForm((prev) => ({
-                                ...prev,
-                                address: addr,
-                                deliveryLat: parseFloat(r.lat),
-                                deliveryLon: parseFloat(r.lon)
-                              }));
-                            }
-                            setLocationResults([]);
-                          }}
-                        >
-                          {r.display_name}
-                        </button>
-                      ))}
+                  {locationError && (
+                    <div style={{ marginTop: '0.25rem', fontSize: 13, color: '#b91c1c' }}>
+                      {locationError}
                     </div>
+                  )}
+                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        <label style={{ fontSize: 13, color: '#555' }}>
+                          <input
+                            type="checkbox"
+                            checked={saveNewAddress}
+                            onChange={(e) => setSaveNewAddress(e.target.checked)}
+                            style={{ marginRight: 6 }}
+                          />
+                          Save this address for future orders
+                        </label>
+                        {saveNewAddress && (
+                          <input
+                            type="text"
+                            placeholder="Address label (e.g. Shop, Godown)"
+                            value={newAddressLabel}
+                            onChange={(e) => setNewAddressLabel(e.target.value)}
+                            className="input"
+                            style={{ fontSize: 13, padding: '0.5rem 0.75rem' }}
+                          />
+                        )}
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -738,6 +1021,12 @@ export default function AgencyProducts() {
                   </label>
                 </div>
               </div>
+
+              {checkoutError && (
+                <div className="checkout-error-banner">
+                  {checkoutError}
+                </div>
+              )}
 
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={() => setCheckoutOpen(false)}>Cancel</button>

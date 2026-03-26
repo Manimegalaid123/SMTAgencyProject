@@ -35,6 +35,16 @@ const fetchJson = (url) => {
   });
 };
 
+// Helper: check if a Nominatim result is in Tamil Nadu
+const isTamilNaduPlace = (place) => {
+  if (!place) return false;
+  const addr = place.address || {};
+  const state = (addr.state || addr.state_district || '').toLowerCase();
+  if (state.includes('tamil nadu')) return true;
+  const disp = (place.display_name || '').toLowerCase();
+  return disp.includes('tamil nadu');
+};
+
 // GET /api/location/search?q=Erode
 router.get('/search', async (req, res) => {
   try {
@@ -53,8 +63,11 @@ router.get('/search', async (req, res) => {
       return res.json([]);
     }
 
+    // Filter to locations inside Tamil Nadu only
+    const filtered = results.filter(isTamilNaduPlace);
+
     // Return only fields we actually use on the frontend
-    const simplified = results.map((r) => ({
+    const simplified = filtered.map((r) => ({
       place_id: r.place_id,
       display_name: r.display_name,
       lat: r.lat,

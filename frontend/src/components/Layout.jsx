@@ -122,7 +122,6 @@ const adminNav = [
   { to: '/reviews', label: 'Reviews', icon: <IconClipboard /> },
   { to: '/agencies', label: 'Agencies', icon: <IconBuilding /> },
   { to: '/analytics', label: 'Analytics', icon: <IconChart /> },
-  { to: '/upload', label: 'Upload Data', icon: <IconUpload /> },
   { to: '/predict', label: 'ML Prediction', icon: <IconCpu /> },
 ];
 

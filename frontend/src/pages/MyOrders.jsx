@@ -55,6 +55,10 @@ export default function MyOrders() {
   const { clearCart } = useCart();
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   // Handle payment callback
   useEffect(() => {
@@ -93,15 +97,6 @@ export default function MyOrders() {
         const data = ordersRes.data || [];
         setOrders(data);
         setMyReviews(reviewsRes.data || []);
-        // Show notification for newly approved or rejected orders
-        const latest = Array.isArray(data) && data.length > 0 ? data[0] : null;
-        if (latest && latest.userNotified === false) {
-          if (latest.status === 'approved') {
-            setNotification({ type: 'success', text: 'Your order has been approved! Please provide delivery details to proceed.' });
-          } else if (latest.status === 'rejected') {
-            setNotification({ type: 'danger', text: 'Your order was rejected.' });
-          }
-        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -117,8 +112,8 @@ export default function MyOrders() {
 
   const getStatusInfo = (status, deliveryType) => {
     const statusMap = {
-      pending: { class: 'warning', label: 'Pending Approval', desc: 'Your order is being reviewed by admin' },
-      approved: { class: 'info', label: 'Approved', desc: 'Order approved! Preparing for delivery' },
+      pending: { class: 'warning', label: 'Order Placed', desc: 'We have received your order' },
+      approved: { class: 'info', label: 'Order Confirmed', desc: 'Order confirmed and getting ready for dispatch' },
       rejected: { class: 'danger', label: 'Rejected', desc: 'Order was rejected' },
       ready_for_pickup: { class: 'info', label: 'Ready for Pickup', desc: 'Your order is ready! Visit SMT Agency to collect' },
       out_for_delivery: { class: 'info', label: 'Out for Delivery', desc: 'Your order is on the way!' },
@@ -127,6 +122,52 @@ export default function MyOrders() {
     };
     return statusMap[status] || { class: 'default', label: status, desc: '' };
   };
+
+  const statusFilterOptions = [
+    { value: 'all', label: 'All statuses' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'awaiting_payment', label: 'Awaiting payment' },
+    { value: 'ready_for_pickup', label: 'Ready for pickup' },
+    { value: 'out_for_delivery', label: 'Out for delivery' },
+    { value: 'delivered', label: 'Delivered' },
+    { value: 'collected', label: 'Collected' },
+    { value: 'rejected', label: 'Rejected' },
+  ];
+
+  const filteredOrders = orders.filter((order) => {
+    if (statusFilter !== 'all' && order.status !== statusFilter) {
+      return false;
+    }
+
+    if (fromDate) {
+      const from = new Date(fromDate);
+      from.setHours(0, 0, 0, 0);
+      const created = order.createdAt ? new Date(order.createdAt) : null;
+      if (!created || created < from) return false;
+    }
+
+    if (toDate) {
+      const to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+      const created = order.createdAt ? new Date(order.createdAt) : null;
+      if (!created || created > to) return false;
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const inOrderNumber = (order.orderNumber || '').toLowerCase().includes(q);
+      const inInvoice = (order.invoiceNumber || '').toLowerCase().includes(q);
+      const inItems = Array.isArray(order.items) && order.items.some(
+        (item) => (item.productName || '').toLowerCase().includes(q)
+      );
+      if (!inOrderNumber && !inInvoice && !inItems) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 
   const generateInvoicePDF = (order) => {
     const doc = new jsPDF();
@@ -292,15 +333,70 @@ export default function MyOrders() {
       {notification && (
         <div className={`notification-banner ${notification.type}`}>{notification.text}</div>
       )}
+      {orders.length > 0 && (
+        <div className="orders-filters">
+          <div className="orders-filters-row">
+            <div className="filter-group">
+              <span className="filter-label">Status</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="input"
+              >
+                {statusFilterOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">From date</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="input"
+              />
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">To date</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="input"
+              />
+            </div>
+          </div>
+          <div className="orders-filters-row">
+            <div className="filter-group filter-search">
+              <span className="filter-label">Search</span>
+              <input
+                type="text"
+                placeholder="Search by order #, invoice or product"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {orders.length === 0 ? (
         <div className="empty-state">
           <IconPackage />
           <h3>No orders yet</h3>
           <p>Start shopping from the Products page to place your first order!</p>
         </div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="empty-state">
+          <IconPackage />
+          <h3>No matching orders</h3>
+          <p>Try changing the status, date range, or search text.</p>
+        </div>
       ) : (
         <div className="orders-timeline">
-          {orders.map(order => {
+          {filteredOrders.map(order => {
             const status = getStatusInfo(order.status, order.deliveryType);
             // Show delivery info form for approved orders missing delivery info
             const needsDelivery = order.status === 'approved' && (
@@ -321,7 +417,10 @@ export default function MyOrders() {
                       {order.deliveryType === 'store_pickup' ? <><IconStore /> Store Pickup</> : <><IconTruck /> Home Delivery</>}
                     </span>
                   </div>
-                  <div className="order-date">{formatDate(order.createdAt)}</div>
+                  <div className="order-meta-row">
+                    <span className="order-date">{formatDate(order.createdAt)}</span>
+                    <span className={`status-chip ${status.class}`}>{status.label}</span>
+                  </div>
                   
                   {/* Pickup Code for Store Pickup */}
                   {order.deliveryType === 'store_pickup' && order.pickupCode && order.status === 'ready_for_pickup' && (

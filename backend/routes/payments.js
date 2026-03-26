@@ -1,6 +1,7 @@
 const express = require('express');
 const Stripe = require('stripe');
 const Order = require('../models/Order');
+const { applyApprovalSideEffects } = require('../utils/orderApproval');
 const { auth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -104,21 +105,17 @@ router.post('/test-pay', auth, async (req, res) => {
     order.amountPaid = order.totalAmount;
     order.paidAt = new Date();
     order.stripePaymentIntentId = 'test_' + Date.now(); // Fake ID for test mode
-    // If order was awaiting_payment after admin approval, mark it approved now
-    if (order.status === 'awaiting_payment') {
-      order.status = 'approved';
-      const now = new Date();
-      order.statusHistory.push({ status: 'approved', label: 'Payment received - Approved', date: now });
-    }
-    // Set invoiceNumber if not already set
-    if (!order.invoiceNumber) {
-      order.invoiceNumber = await Order.generateInvoiceNumber();
-    }
-    await order.save();
+
+    // Apply stock deduction/exports/sales and mark order approved
+    await applyApprovalSideEffects(order, null);
     
     res.json({ success: true, message: 'Payment successful (Test Mode)' });
   } catch (err) {
     console.error('Test payment error:', err);
+    // If stock is not enough, send a specific out-of-stock style error
+    if (typeof err.message === 'string' && err.message.toLowerCase().includes('insufficient')) {
+      return res.status(409).json({ error: err.message, code: 'OUT_OF_STOCK' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -134,31 +131,23 @@ router.get('/verify/:orderId', auth, async (req, res) => {
     if (!order.stripeSessionId) {
       return res.json({ paymentStatus: order.paymentStatus });
     }
-    
+
     // Get session from Stripe
     const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId);
-    
+
     if (session.payment_status === 'paid' && order.paymentStatus !== 'paid') {
       order.paymentStatus = 'paid';
       order.amountPaid = order.totalAmount;
       order.paidAt = new Date();
       order.stripePaymentIntentId = session.payment_intent;
-      // If order was awaiting_payment after admin approval, mark it approved now
-      if (order.status === 'awaiting_payment') {
-        order.status = 'approved';
-        const now = new Date();
-        order.statusHistory.push({ status: 'approved', label: 'Payment received - Approved', date: now });
-      }
-      // Set invoiceNumber if not already set
-      if (!order.invoiceNumber) {
-        order.invoiceNumber = await Order.generateInvoiceNumber();
-      }
-      await order.save();
+
+      // Apply stock deduction/exports/sales and mark order approved
+      await applyApprovalSideEffects(order, null);
     }
-    
-    res.json({ 
+
+    res.json({
       paymentStatus: order.paymentStatus,
-      stripeStatus: session.payment_status 
+      stripeStatus: session.payment_status,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -192,17 +181,9 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       order.amountPaid = order.totalAmount;
       order.paidAt = new Date();
       order.stripePaymentIntentId = session.payment_intent;
-      // If order was awaiting_payment after admin approval, mark it approved now
-      if (order.status === 'awaiting_payment') {
-        order.status = 'approved';
-        const now = new Date();
-        order.statusHistory.push({ status: 'approved', label: 'Payment received - Approved', date: now });
-      }
-      // Set invoiceNumber if not already set
-      if (!order.invoiceNumber) {
-        order.invoiceNumber = await Order.generateInvoiceNumber();
-      }
-      await order.save();
+
+      // Apply stock deduction/exports/sales and mark order approved
+      await applyApprovalSideEffects(order, null);
       console.log(`Order ${order.orderNumber} marked as paid via webhook`);
     }
   }

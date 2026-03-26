@@ -64,4 +64,117 @@ router.get('/me', auth, (req, res) => {
   res.json({ user: req.user });
 });
 
+// Saved delivery addresses for logged-in user
+router.get('/addresses', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('addresses');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user.addresses || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/addresses', auth, async (req, res) => {
+  try {
+    const { label, addressLine, city, district, pincode, fullAddress, deliveryLat, deliveryLon } = req.body;
+    if (!addressLine || !city || !district || !pincode) {
+      return res.status(400).json({ error: 'Address line, city, district and pincode are required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const addr = {
+      label: label || `Address ${user.addresses.length + 1}`,
+      addressLine,
+      city,
+      district,
+      pincode,
+      fullAddress: fullAddress || `${addressLine}, ${city}, ${district}, Tamil Nadu, India - ${pincode}`,
+      deliveryLat,
+      deliveryLon,
+    };
+
+    user.addresses.push(addr);
+    await user.save();
+    res.status(201).json(user.addresses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/addresses/:id', auth, async (req, res) => {
+  try {
+    const { label, addressLine, city, district, pincode, fullAddress, deliveryLat, deliveryLon } = req.body;
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const addr = user.addresses.id(req.params.id);
+    if (!addr) return res.status(404).json({ error: 'Address not found' });
+
+    if (!addressLine || !city || !district || !pincode) {
+      return res.status(400).json({ error: 'Address line, city, district and pincode are required' });
+    }
+
+    addr.label = label || addr.label;
+    addr.addressLine = addressLine;
+    addr.city = city;
+    addr.district = district;
+    addr.pincode = pincode;
+    addr.fullAddress = fullAddress || `${addressLine}, ${city}, ${district}, Tamil Nadu, India - ${pincode}`;
+    if (deliveryLat !== undefined) addr.deliveryLat = deliveryLat;
+    if (deliveryLon !== undefined) addr.deliveryLon = deliveryLon;
+
+    await user.save();
+    res.json(user.addresses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/addresses/:id/default', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let found = false;
+    if (Array.isArray(user.addresses)) {
+      user.addresses.forEach((a) => {
+        if (a._id.toString() === req.params.id) {
+          a.isDefault = true;
+          found = true;
+        } else {
+          a.isDefault = false;
+        }
+      });
+    }
+
+    if (!found) return res.status(404).json({ error: 'Address not found' });
+
+    await user.save();
+    res.json(user.addresses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/addresses/:id', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const before = user.addresses.length;
+    user.addresses = user.addresses.filter((a) => a._id.toString() !== req.params.id);
+    if (before === user.addresses.length) {
+      return res.status(404).json({ error: 'Address not found' });
+    }
+    await user.save();
+    res.json(user.addresses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

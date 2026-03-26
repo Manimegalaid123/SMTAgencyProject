@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useToast } from '../context/ToastContext';
 import './Payment.css';
 
 const IconCheck = () => (
@@ -13,6 +14,7 @@ const IconCheck = () => (
 export default function Payment() {
   const { orderId } = useParams();
   const navigate = useNavigate();
+  const { showError } = useToast();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -29,11 +31,24 @@ export default function Payment() {
         }
       })
       .catch(err => {
-        alert('Order not found');
+        showError('Order not found');
         navigate('/my-orders');
       })
       .finally(() => setLoading(false));
   }, [orderId, navigate]);
+
+  // Warn user if they try to close/refresh the page before completing payment
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (!success && order?.paymentStatus !== 'paid') {
+        e.preventDefault();
+        e.returnValue = 'Your order is not confirmed until payment is completed. Are you sure you want to leave without paying?';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [success, order]);
 
   // Go to REAL Stripe checkout
   const handleRealStripe = async () => {
@@ -42,7 +57,7 @@ export default function Payment() {
       const { data } = await api.post('/payments/create-checkout-session', { orderId });
       window.location.href = data.url;
     } catch (err) {
-      alert('Failed to create checkout session');
+      showError('Failed to create checkout session');
       setRedirectingToStripe(false);
     }
   };
@@ -56,18 +71,34 @@ export default function Payment() {
       setSuccess(true);
       setTimeout(() => navigate('/my-orders?payment=success'), 2000);
     } catch (err) {
-      alert('Payment failed');
+      const msg = err.response?.data?.error || '';
+      const code = err.response?.data?.code;
+
+      if (code === 'OUT_OF_STOCK' || msg.toLowerCase().includes('insufficient')) {
+        showError('Out of stock for one or more items in this order. Another shop may have already bought this quantity. Please reduce the quantity or choose another product.');
+      } else {
+        showError('Payment failed. Please try again.');
+      }
       setProcessing(false);
     }
+  };
+
+  const handleBack = () => {
+    if (!success && order?.paymentStatus !== 'paid') {
+      const confirmLeave = window.confirm(
+        'Your order is not confirmed yet. Please complete payment to confirm your order. Do you still want to go back without paying?'
+      );
+      if (!confirmLeave) return;
+    }
+    navigate('/my-orders');
   };
 
   if (loading) {
     return <div className="stripe-page"><div className="stripe-loading">Loading...</div></div>;
   }
 
-  // Calculate grand total (with GST)
-  const gst = order?.totalAmount ? order.totalAmount * 0.18 : 0;
-  const grandTotal = order?.totalAmount ? order.totalAmount + gst : 0;
+  // Total amount from backend already includes item price, GST and delivery
+  const grandTotal = order?.totalAmount || 0;
 
   if (success) {
     return (
@@ -90,6 +121,11 @@ export default function Payment() {
           <div className="dummy-header">
             <span className="dummy-badge">🧪 TEST MODE - Demo Payment</span>
           </div>
+          {order?.paymentStatus !== 'paid' && (
+            <div className="payment-warning">
+              Please complete this payment. Your order will be confirmed only after successful payment.
+            </div>
+          )}
           <div className="dummy-amount">
             <span>Pay</span>
             <h2>₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h2>
@@ -122,11 +158,16 @@ export default function Payment() {
   return (
     <div className="stripe-page">
       <div className="payment-choice-card">
-        <button className="back-arrow-top" onClick={() => navigate('/my-orders')}>← Back</button>
+        <button className="back-arrow-top" onClick={handleBack}>← Back</button>
         <div className="choice-header">
           <span className="stripe-logo">stripe</span>
           <h2>Complete Your Payment</h2>
         </div>
+        {order?.paymentStatus !== 'paid' && (
+          <div className="payment-warning">
+            Please complete your payment now. Your order will be confirmed only after successful payment. Stock is not reserved until then.
+          </div>
+        )}
         <div className="choice-amount">
           <span>Amount to Pay</span>
           <h1>₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h1>

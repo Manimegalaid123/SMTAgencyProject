@@ -6,6 +6,7 @@ const Export = require('../models/Export');
 const Product = require('../models/Product');
 const SalesRecord = require('../models/SalesRecord');
 const StockBatch = require('../models/StockBatch');
+const { applyApprovalSideEffects } = require('../utils/orderApproval');
 const { auth, adminOnly } = require('../middleware/auth');
 
 const router = express.Router();
@@ -69,6 +70,26 @@ const haversineKm = (lat1, lon1, lat2, lon2) => {
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+};
+
+// Approximate Tamil Nadu bounding box check (for lat/lon inside Tamil Nadu)
+const isInsideTamilNadu = (lat, lon) => {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  // Rough bounds for Tamil Nadu state
+  const minLat = 8.0;
+  const maxLat = 13.7;
+  const minLon = 76.0;
+  const maxLon = 80.5;
+  return lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
+};
+
+// Simple text-based check for Tamil Nadu addresses
+const isTamilNaduAddressText = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const lower = text.toLowerCase();
+  if (lower.includes('tamil nadu')) return true;
+  if (lower.includes(', tn ') || lower.endsWith(' tn') || lower.includes('(tn)')) return true;
+  return false;
 };
 
 // Calculate delivery charge based on subtotal and weight
@@ -169,6 +190,9 @@ const generatePickupCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
+// Approval side-effects (stock deduction, exports, sales records) are implemented
+// in utils/orderApproval.js and reused by both order and payment routes.
+
 // Get delivery config for frontend
 router.get('/delivery-config', auth, async (req, res) => {
   res.json(DELIVERY_CONFIG);
@@ -223,6 +247,25 @@ router.post('/', auth, async (req, res) => {
     }
     
     // Delivery address is not required at order creation. It will be collected later if needed.
+
+    // Restrict home delivery orders to Tamil Nadu only
+    if (deliveryType === 'home_delivery') {
+      let insideTN = false;
+
+      if (deliveryLocation && deliveryLocation.lat != null && deliveryLocation.lon != null) {
+        const lat = Number(deliveryLocation.lat);
+        const lon = Number(deliveryLocation.lon);
+        insideTN = isInsideTamilNadu(lat, lon);
+      } else if (deliveryAddress) {
+        insideTN = isTamilNaduAddressText(deliveryAddress);
+      }
+
+      if (!insideTN) {
+        return res.status(400).json({
+          error: 'We currently deliver only within Tamil Nadu. Please enter a delivery address inside Tamil Nadu or choose Store Pickup.'
+        });
+      }
+    }
     
     // Validate items and calculate totals
     let subtotal = 0;
@@ -300,11 +343,11 @@ router.post('/', auth, async (req, res) => {
     const totalAmount = subtotal + totalTax + deliveryCharge;
     
     const orderNumber = await Order.generateOrderNumber();
-    
+
     // Generate pickup code for store pickup orders
     const pickupCode = deliveryType === 'store_pickup' ? generatePickupCode() : undefined;
-    
-    const order = await Order.create({
+
+    let order = await Order.create({
       orderNumber,
       user: req.user._id,
       agencyName: req.user.agencyName || req.user.name,
@@ -328,12 +371,23 @@ router.post('/', auth, async (req, res) => {
       ]
       // Do NOT set paymentStatus at creation
     });
-    
-    const populatedOrder = await Order.findById(order._id)
-      .populate('user', 'name email agencyName')
-      .populate('items.product');
-    
-    res.status(201).json(populatedOrder);
+
+    // NEW: For COD, auto-approve immediately (deduct stock, create exports, update sales records).
+    // For online payments, only move to awaiting_payment without touching stock;
+    // stock/export/sales will be applied after successful payment.
+    if (paymentMethod === 'cod') {
+      order = await applyApprovalSideEffects(order, null);
+    } else {
+      order.status = 'awaiting_payment';
+      order.statusHistory.push({
+        status: 'awaiting_payment',
+        label: 'Awaiting Payment',
+        date: new Date()
+      });
+      await order.save();
+    }
+
+    res.status(201).json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -344,103 +398,14 @@ router.patch('/:id/approve', auth, adminOnly, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    
-    if (order.status !== 'pending') {
-      return res.status(400).json({ error: `Cannot approve order with status: ${order.status}` });
-    }
-    
-    // Check stock availability for all items
-    for (const item of order.items) {
-      const stock = await Stock.findOne({ product: item.product });
-      if (!stock || stock.quantity < item.quantity) {
-        return res.status(400).json({ error: `Insufficient stock for ${item.productName}` });
-      }
-    }
-    
-    // Generate invoice number
-    const invoiceNumber = await Order.generateInvoiceNumber();
-    
-    // Create exports and update stock for each item
-    for (const item of order.items) {
-      const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      let remainingToDeduct = item.quantity;
 
-      // Deduct from stock batches (FEFO based on expiryDate)
-      const batches = await StockBatch.find({
-        product: item.product,
-        expiryDate: { $gte: startOfToday },
-        remainingQuantity: { $gt: 0 },
-      }).sort({ expiryDate: 1, createdAt: 1 });
-
-      for (const batch of batches) {
-        if (remainingToDeduct <= 0) break;
-        const take = Math.min(batch.remainingQuantity, remainingToDeduct);
-        batch.remainingQuantity -= take;
-        if (batch.remainingQuantity === 0) {
-          batch.exhaustedAt = new Date();
-        }
-        await batch.save();
-        remainingToDeduct -= take;
-      }
-
-      if (remainingToDeduct > 0) {
-        return res.status(400).json({
-          error: `Insufficient non-expired stock for ${item.productName} while approving order (Remaining needed: ${remainingToDeduct})`
-        });
-      }
-
-      // Deduct from aggregated stock record
-      const stock = await Stock.findOne({ product: item.product });
-      if (stock) {
-        stock.quantity -= item.quantity;
-        stock.lastUpdated = new Date();
-        await stock.save();
-      }
-      
-      // Create export record
-      await Export.create({
-        product: item.product,
-        quantity: item.quantity,
-        agency: order.user,
-        agencyName: order.agencyName,
-        notes: `Order: ${order.orderNumber}`
-      });
-      
-      // Update sales record
-      const d = new Date();
-      const month = d.getMonth() + 1, year = d.getFullYear();
-      await SalesRecord.findOneAndUpdate(
-        { product: item.product, month, year },
-        { 
-          $inc: { quantity: item.quantity, revenue: item.subtotal }, 
-          productName: item.productName, 
-          $set: { year, month } 
-        },
-        { upsert: true, new: true }
-      );
+    try {
+      const populatedOrder = await applyApprovalSideEffects(order, req.user._id);
+      res.json(populatedOrder);
+    } catch (err) {
+      // Helper throws for business-rule errors (stock issues, invalid status)
+      return res.status(400).json({ error: err.message });
     }
-    
-    // After admin approval, set status based on payment method
-    const now = new Date();
-    if (order.paymentMethod === 'cod') {
-      order.status = 'approved';
-      order.statusHistory.push({ status: 'approved', label: 'Order Approved', date: now });
-      order.invoiceNumber = invoiceNumber; // Only set invoice for COD here
-    } else {
-      order.status = 'awaiting_payment';
-      order.statusHistory.push({ status: 'awaiting_payment', label: 'Awaiting Payment', date: now });
-      // Do NOT set invoiceNumber for online yet
-    }
-    order.approvedAt = new Date();
-    order.approvedBy = req.user._id;
-    await order.save();
-    
-    const populatedOrder = await Order.findById(order._id)
-      .populate('user', 'name email agencyName')
-      .populate('items.product');
-    
-    res.json(populatedOrder);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

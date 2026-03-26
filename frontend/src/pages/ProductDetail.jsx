@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
 import { useCart } from '../context/CartContext';
+import { useToast } from '../context/ToastContext';
 import './Products.css';
 
 export default function ProductDetail() {
@@ -14,6 +15,10 @@ export default function ProductDetail() {
   const [zoomOpen, setZoomOpen] = useState(false);
   const [hoverZoom, setHoverZoom] = useState({ x: 50, y: 50, active: false });
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [quantity, setQuantity] = useState('');
+  const { showError, showSuccess } = useToast();
 
   useEffect(() => {
     let isMounted = true;
@@ -22,6 +27,8 @@ export default function ProductDetail() {
         const { data } = await api.get(`/products/${id}`);
         if (!isMounted) return;
         setProduct(data);
+
+        // Load related products
         const listRes = await api.get('/products');
         if (!isMounted) return;
         const all = Array.isArray(listRes.data) ? listRes.data : (listRes.data.products || []);
@@ -30,9 +37,25 @@ export default function ProductDetail() {
         );
         setRelated(sameCategory.slice(0, 8));
         setSelectedImageIndex(0);
+
+        // Load approved reviews for this product
+        setReviewsLoading(true);
+        api.get(`/reviews/product/${id}`)
+          .then((res) => {
+            if (!isMounted) return;
+            setReviews(Array.isArray(res.data) ? res.data : []);
+          })
+          .catch(() => {
+            if (!isMounted) return;
+            setReviews([]);
+          })
+          .finally(() => {
+            if (!isMounted) return;
+            setReviewsLoading(false);
+          });
       } catch (err) {
         if (isMounted) {
-          alert(err.response?.data?.error || 'Unable to load product');
+          showError(err.response?.data?.error || 'Unable to load product');
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -63,9 +86,45 @@ export default function ProductDetail() {
     : (product.imageUrl ? [product.imageUrl] : []);
   const mainImage = images[selectedImageIndex] || images[0] || null;
 
+  const totalReviews = reviews.length;
+  const avgRating = product.avgRating || (totalReviews
+    ? (reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / totalReviews).toFixed(1)
+    : null);
+  const ratingCounts = [5, 4, 3, 2, 1].map((star) =>
+    reviews.filter((r) => Number(r.rating) === star).length
+  );
+
+  const handleQuantityChange = (e) => {
+    const value = e.target.value;
+    // Allow empty input so there is no default quantity shown
+    if (value === '') {
+      setQuantity('');
+      return;
+    }
+    const num = parseInt(value, 10);
+    if (!Number.isNaN(num) && num > 0) {
+      setQuantity(String(num));
+    }
+  };
+
   const handleAddToCart = () => {
-    addToCart(product, 1);
-    alert('Added to cart');
+    const num = parseInt(quantity, 10);
+    if (Number.isNaN(num) || num <= 0) {
+      showError('Please enter a valid quantity.');
+      return;
+    }
+    addToCart(product, num);
+    showSuccess('Added to cart');
+  };
+
+  const handleBuyNow = () => {
+    const num = parseInt(quantity, 10);
+    if (Number.isNaN(num) || num <= 0) {
+      showError('Please enter a valid quantity.');
+      return;
+    }
+    addToCart(product, num);
+    navigate('/agency-products?checkout=1');
   };
 
   return (
@@ -126,6 +185,19 @@ export default function ProductDetail() {
             {product.name}
             {product.packSize ? ` (${product.packSize})` : ''}
           </h1>
+          {(avgRating || totalReviews > 0) && (
+            <div className="product-detail-rating-summary-inline">
+              {avgRating && (
+                <span className="rating-badge">
+                  <span className="rating-score">{avgRating}</span>
+                  <span className="rating-star">★</span>
+                </span>
+              )}
+              <span className="rating-count-text">
+                {totalReviews} rating{totalReviews === 1 ? '' : 's'}
+              </span>
+            </div>
+          )}
           <p className="product-detail-category">{product.category || 'FMCG'}</p>
           <div className="product-detail-price-row">
             <span className="product-detail-price">₹{Number(product.price).toLocaleString('en-IN')}</span>
@@ -152,12 +224,89 @@ export default function ProductDetail() {
           )}
 
           <div className="product-detail-actions">
-            <button type="button" className="btn-primary" onClick={handleAddToCart}>
-              Add to Cart
-            </button>
+            <div className="product-detail-actions-card">
+              <div className="product-detail-qty-row">
+                <span className="qty-label">Quantity</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={quantity}
+                  onChange={handleQuantityChange}
+                  className="qty-input product-detail-qty-input"
+                />
+              </div>
+              <button type="button" className="btn-primary" onClick={handleBuyNow}>
+                Buy Now
+              </button>
+              <button type="button" className="btn-secondary" onClick={handleAddToCart}>
+                Add to Cart
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {(totalReviews > 0 || reviewsLoading) && (
+        <section className="product-detail-reviews-section">
+          <h2 className="product-detail-reviews-title">Product Ratings &amp; Reviews</h2>
+          <div className="product-detail-reviews-layout">
+            <div className="product-detail-reviews-left">
+              <div className="overall-rating">
+                <div className="overall-score-row">
+                  <span className="overall-score">{avgRating || '–'}</span>
+                  <span className="overall-star">★</span>
+                </div>
+                <div className="overall-meta">
+                  <span>{totalReviews} Ratings</span>
+                </div>
+              </div>
+              <div className="rating-bars">
+                {[5, 4, 3, 2, 1].map((star, idx) => {
+                  const count = ratingCounts[idx];
+                  const percent = totalReviews ? Math.round((count / totalReviews) * 100) : 0;
+                  return (
+                    <div key={star} className="rating-bar-row">
+                      <span className="rating-bar-label">{star}★</span>
+                      <div className="rating-bar-track">
+                        <div className="rating-bar-fill" style={{ width: `${percent}%` }} />
+                      </div>
+                      <span className="rating-bar-count">{count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="product-detail-reviews-right">
+              {reviewsLoading && <div className="reviews-loading">Loading reviews...</div>}
+              {!reviewsLoading && totalReviews === 0 && (
+                <div className="no-reviews">No reviews yet. Be the first to rate this product.</div>
+              )}
+              {!reviewsLoading && totalReviews > 0 && (
+                <ul className="reviews-list">
+                  {reviews.slice(0, 6).map((rev) => (
+                    <li key={rev._id} className="review-item">
+                      <div className="review-header">
+                        <span className="review-rating-badge">
+                          <span className="review-rating-score">{rev.rating}</span>
+                          <span className="review-rating-star">★</span>
+                        </span>
+                        <span className="review-title">{rev.title || 'Rated this product'}</span>
+                      </div>
+                      {rev.comment && <p className="review-comment">{rev.comment}</p>}
+                      <div className="review-footer">
+                        <span className="review-author">
+                          {rev.user?.agencyName || rev.user?.name || 'Customer'}
+                        </span>
+                        <span className="review-date">{formatDate(rev.createdAt)}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {related.length > 0 && (
         <section className="related-products-section">

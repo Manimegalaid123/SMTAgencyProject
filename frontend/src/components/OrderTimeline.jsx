@@ -19,14 +19,14 @@ function TimelineIcon({ completed }) {
 
 const deliverySteps = [
   { status: 'pending', label: 'Order Placed' },
-  { status: 'approved', label: 'Order Approved' },
+  { status: 'approved', label: 'Order Confirmed' },
   { status: 'out_for_delivery', label: 'Out for Delivery' },
   { status: 'delivered', label: 'Delivered' },
 ];
 
 const pickupSteps = [
   { status: 'pending', label: 'Order Placed' },
-  { status: 'approved', label: 'Order Approved' },
+  { status: 'approved', label: 'Order Confirmed' },
   { status: 'ready_for_pickup', label: 'Ready for Pickup' },
   { status: 'collected', label: 'Collected' },
 ];
