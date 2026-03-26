@@ -79,6 +79,16 @@ const IconCash = () => (
   </svg>
 );
 
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
+
+const getImageUrl = (url) => {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!BACKEND_BASE_URL) return url;
+  if (url.startsWith('/')) return `${BACKEND_BASE_URL}${url}`;
+  return `${BACKEND_BASE_URL}/${url}`;
+};
+
 export default function AgencyProducts() {
   const { user } = useAuth();
   const { cartItems, addToCart, updateQuantity, removeFromCart, clearCart, getCartTotal, getCartCount } = useCart();
@@ -453,6 +463,7 @@ export default function AgencyProducts() {
       <div className="products-grid">
         {filteredProducts.map((p) => {
           const mainImage = p.imageUrl || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
+          const imageSrc = getImageUrl(mainImage);
           const inCartQty = getCartItemQty(p._id);
           return (
           <div
@@ -460,10 +471,10 @@ export default function AgencyProducts() {
             className="product-card"
             onClick={() => navigate(`/agency-products/${p._id}`)}
           >
-            {mainImage && (
+            {imageSrc && (
               <div className="product-image-wrap">
                 <img
-                  src={mainImage}
+                  src={imageSrc}
                   alt={p.name}
                   className="product-image"
                   loading="lazy"

@@ -19,6 +19,16 @@ const initialForm = {
   expiryDate: '',
 };
 
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
+
+const getImageUrl = (url) => {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!BACKEND_BASE_URL) return url;
+  if (url.startsWith('/')) return `${BACKEND_BASE_URL}${url}`;
+  return `${BACKEND_BASE_URL}/${url}`;
+};
+
 export default function Products() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
